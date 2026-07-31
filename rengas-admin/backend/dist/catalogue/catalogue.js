@@ -1,0 +1,423 @@
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CatalogueController = exports.CatalogueService = void 0;
+const common_1 = require("@nestjs/common");
+const typeorm_1 = require("@nestjs/typeorm");
+const node_fs_1 = require("node:fs");
+const node_path_1 = require("node:path");
+const PDFDocument = require("pdfkit");
+const QRCode = require("qrcode");
+const typeorm_2 = require("typeorm");
+const entities_1 = require("../entities");
+const CATEGORY_COLORS = [
+    "#00A878",
+    "#17B7D1",
+    "#FF8900",
+    "#7C3AED",
+    "#E11D48",
+    "#2563EB",
+    "#65A30D",
+    "#DB2777",
+    "#0F9D8A",
+    "#EA580C",
+    "#4F46E5",
+    "#0891B2",
+];
+const CATALOGUE_URL = "https://www.rengatrading.com/catalogue";
+const COMPANY_URL = "https://www.rengas.my";
+let CatalogueService = class CatalogueService {
+    products;
+    categories;
+    designs;
+    constructor(products, categories, designs) {
+        this.products = products;
+        this.categories = categories;
+        this.designs = designs;
+    }
+    async generate(input) {
+        if (!input.title?.trim() || !input.from || !input.to) {
+            throw new common_1.BadRequestException("Title, From date and To date are required");
+        }
+        if (!Array.isArray(input.categoryIds) || !input.categoryIds.length) {
+            throw new common_1.BadRequestException("Select at least one category");
+        }
+        const categories = await this.categories.find({
+            where: { id: (0, typeorm_2.In)(input.categoryIds.map(Number)) },
+            order: { name: "ASC" },
+        });
+        const products = await this.products.find({
+            where: { category: { id: (0, typeorm_2.In)(input.categoryIds.map(Number)) } },
+            relations: { category: true },
+            order: { description: "ASC" },
+        });
+        const design = await this.designs.findOneBy({ id: 1 });
+        const logo = this.localAsset("../frontend/logo.png");
+        const grayscaleLogo = this.localAsset("assets/default-product-logo-grayscale.png") || logo;
+        const catalogueQr = await QRCode.toBuffer(COMPANY_URL, {
+            type: "png",
+            width: 320,
+            margin: 1,
+            color: { dark: "#000000", light: "#FFFFFF" },
+        });
+        const topBanner = await this.imageBuffer(design?.topBannerUrl);
+        const stockImage = await this.imageBuffer(design?.productPhotoUrl);
+        const productImages = new Map();
+        await Promise.all(products.map(async (product) => {
+            productImages.set(product.id, await this.imageBuffer(product.imageUrl));
+        }));
+        const doc = new PDFDocument({
+            size: "A4",
+            margin: 0,
+            bufferPages: true,
+            info: { Title: input.title, Author: "Renga Trading & Manufacturing" },
+        });
+        const chunks = [];
+        doc.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        const finished = new Promise((resolve, reject) => {
+            doc.on("end", () => resolve(Buffer.concat(chunks)));
+            doc.on("error", reject);
+        });
+        this.drawCover(doc, input, logo, topBanner, stockImage);
+        let cataloguePage = 1;
+        categories.forEach((category) => {
+            const categoryProducts = products.filter((product) => product.category?.id === category.id);
+            const color = this.categoryColor(category.name);
+            for (let start = 0; start < Math.max(1, categoryProducts.length); start += 9) {
+                doc.addPage();
+                this.drawCategoryPage(doc, category.name, categoryProducts.slice(start, start + 9), productImages, color, cataloguePage, logo, grayscaleLogo);
+                cataloguePage += 1;
+            }
+        });
+        this.drawContactPage(doc, logo, catalogueQr);
+        doc.end();
+        return finished;
+    }
+    drawCover(doc, input, logo, topBanner, stockImage) {
+        const width = doc.page.width;
+        const height = doc.page.height;
+        const coverInset = 22;
+        const coverWidth = width - coverInset * 2;
+        const middleTop = 472;
+        doc.rect(0, 0, width, height).fill("#FFFFFF");
+        if (topBanner) {
+            doc.rect(coverInset, coverInset, coverWidth, middleTop - coverInset)
+                .fill("#4C1D75");
+            doc.save()
+                .rect(coverInset, coverInset, coverWidth, middleTop - coverInset)
+                .clip()
+                .opacity(0.58)
+                .image(topBanner, coverInset, coverInset, {
+                cover: [coverWidth, middleTop - coverInset],
+                align: "center",
+                valign: "center",
+            })
+                .restore();
+            doc.save()
+                .opacity(0.18)
+                .rect(coverInset, coverInset, coverWidth, middleTop - coverInset)
+                .fill("#111827")
+                .restore();
+        }
+        else {
+            doc.save();
+            const top = coverInset;
+            const bottom = middleTop;
+            doc.rect(coverInset, top, coverWidth, bottom - top).fill("#AA00D4");
+            doc.polygon([coverInset, top], [width - coverInset, top], [coverInset, 238]).fill("#DFA7B2");
+            doc.polygon([coverInset, 238], [275, 374], [coverInset, bottom]).fill("#17A9BE");
+            doc.polygon([width - coverInset, top], [width - coverInset, bottom], [302, 236]).fill("#6D00D5");
+            doc.polygon([coverInset, 238], [302, 236], [width - coverInset, bottom], [275, 374]).fill("#B500D5");
+            doc.restore();
+        }
+        if (logo)
+            doc.image(logo, width / 2 - 64, 62, { fit: [128, 128], align: "center", valign: "center" });
+        doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(22)
+            .text("RENGA TRADING &", 80, 242, { width: width - 160, align: "center" })
+            .text("MANUFACTURING (M) SDN BHD.", 55, 280, { width: width - 110, align: "center" })
+            .fontSize(21).text("PRICE LIST", 80, 333, { width: width - 160, align: "center" })
+            .fontSize(15).text(input.title.trim(), 80, 376, { width: width - 160, align: "center" })
+            .fontSize(11).text(`From: ${this.displayDate(input.from)}  To: ${this.displayDate(input.to)}`, 80, 414, {
+            width: width - 160,
+            align: "center",
+        });
+        if (stockImage) {
+            const lowerTop = middleTop - 0.5;
+            const lowerHeight = height - lowerTop - coverInset;
+            doc.save()
+                .rect(coverInset, lowerTop, coverWidth, lowerHeight)
+                .clip()
+                .image(stockImage, coverInset, lowerTop, {
+                cover: [coverWidth, lowerHeight],
+                align: "center",
+                valign: "center",
+            })
+                .restore();
+        }
+        else {
+            doc.fillColor("#666666").fontSize(11).text("Upload stock image in Design CMS", 60, middleTop + 145, { width: width - 120, align: "center" });
+        }
+        doc.rect(coverInset, coverInset, coverWidth, height - coverInset * 2).lineWidth(0.8).stroke("#475569");
+    }
+    drawCategoryPage(doc, categoryName, products, images, color, pageNumber, logo, grayscaleLogo) {
+        const width = doc.page.width;
+        const height = doc.page.height;
+        doc.rect(0, 0, width, height).fill(color);
+        doc.rect(26, 28, width - 52, height - 56).fill("#FFFFFF");
+        doc.fillColor("#111111").font("Helvetica-Bold").fontSize(18)
+            .text(categoryName, 70, 48, { width: width - 140, align: "center" });
+        const titleWidth = Math.min(190, Math.max(85, categoryName.length * 10));
+        doc.rect((width - titleWidth) / 2, 76, titleWidth, 3).fill(color);
+        const cardWidth = 132;
+        const cardHeight = 218;
+        const gapX = 30;
+        const gapY = 26;
+        const startX = 70;
+        const startY = 90;
+        for (let slot = 0; slot < products.length; slot += 1) {
+            const col = slot % 3;
+            const row = Math.floor(slot / 3);
+            const x = startX + col * (cardWidth + gapX);
+            const y = startY + row * (cardHeight + gapY);
+            const product = products[slot];
+            this.drawProductCard(doc, product, images.get(product.id) || null, grayscaleLogo, x, y, cardWidth, cardHeight, color);
+        }
+        const footerTop = height - 34;
+        doc.rect(0, footerTop, width, 34).fill(color);
+        if (logo) {
+            doc.image(logo, 17, footerTop - 12, { fit: [30, 30] });
+        }
+        doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(11)
+            .text(String(pageNumber), width / 2 - 20, footerTop + 10, { width: 40, align: "center" });
+        doc.save()
+            .roundedRect(width - 130, footerTop - 13, 124, 52, 15)
+            .fill(color)
+            .restore();
+        doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(15)
+            .text("ORDER NOW", width - 124, footerTop - 5, { width: 112, align: "center" });
+        doc.link(width - 130, footerTop - 13, 124, 47, CATALOGUE_URL);
+    }
+    drawContactPage(doc, logo, qrCode) {
+        doc.addPage();
+        const width = doc.page.width;
+        const height = doc.page.height;
+        const background = "#5B1875";
+        doc.rect(0, 0, width, height).fill(background);
+        doc.rect(20, 20, width - 40, height - 40)
+            .lineWidth(1.2)
+            .stroke("#FFFFFF");
+        if (logo) {
+            doc.image(logo, width / 2 - 58, 50, {
+                fit: [116, 116],
+                align: "center",
+                valign: "center",
+            });
+        }
+        doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(19)
+            .text("RENGA TRADING &", 70, 168, { width: width - 140, align: "center" })
+            .fontSize(17).text("MANUFACTURING (M) SDN BHD.", 45, 200, {
+            width: width - 90,
+            align: "center",
+        });
+        const cards = [
+            {
+                title: "HEAD OFFICE (JOHOR\nBAHRU)",
+                address: "No. 12, Jalan Murni 3,\nTaman Perindustrian Murni,\n81400 Senai, Johor Darul Takzim,\nMalaysia.",
+                contacts: ["+607 599 9994", "+607 599 9995", "+607 599 9521", "+6019 711 6465", "sales@rengas.my"],
+            },
+            {
+                title: "KUALA LUMPUR BRANCH",
+                address: "No. 10, Jalan SB Jaya 9,\nTaman Perindustrian SB Jaya,\n47000 Sungai Buloh, Selangor,\nMalaysia.",
+                contacts: ["+603 6156 6466", "+603 6156 6466", "+6012 7697 621", "sales@rengas.my"],
+            },
+            {
+                title: "PASAR RAYA RENGAS",
+                address: "No. 7, 8, 9 & 10, Jalan Damai 2,\nTaman Damai, 81400 Senai,\nJohor Darul Takzim, Malaysia.",
+                contacts: ["+607 598 7200", "+607 598 7200", "+6012 710 7621", "sales@rengas.my"],
+            },
+        ];
+        const cardY = 245;
+        const cardWidth = 167;
+        const cardHeight = 270;
+        const gap = 10;
+        const startX = (width - (cardWidth * 3 + gap * 2)) / 2;
+        cards.forEach((card, index) => {
+            const x = startX + index * (cardWidth + gap);
+            this.drawContactCard(doc, x, cardY, cardWidth, cardHeight, card);
+        });
+        doc.image(qrCode, width / 2 - 50, 560, { width: 100, height: 100 });
+        doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(14)
+            .text("www.rengas.my", width / 2 - 80, 670, { width: 160, align: "center" });
+    }
+    drawContactCard(doc, x, y, width, height, card) {
+        doc.save();
+        doc.roundedRect(x + 3, y + 5, width, height, 12).fillOpacity(0.22).fill("#222222");
+        doc.fillOpacity(1).roundedRect(x, y, width, height, 12)
+            .lineWidth(1.3).fillAndStroke("#FFFFFF", "#E6B83F");
+        doc.restore();
+        doc.fillColor("#172033").font("Helvetica-Bold").fontSize(10)
+            .text(card.title, x + 10, y + 15, { width: width - 20, height: 28, align: "center" });
+        doc.moveTo(x + 22, y + 53).lineTo(x + width - 22, y + 53)
+            .lineWidth(1.5).stroke("#F2B624");
+        doc.fillColor("#172033").font("Helvetica").fontSize(8.5)
+            .text(card.address, x + 14, y + 70, { width: width - 28, lineGap: 2 });
+        const iconColors = ["#168CD2", "#168CD2", "#6C4AC7", "#10A76C", "#ED4A5A"];
+        const iconLetters = ["T", "T", "F", "W", "E"];
+        const contactStart = y + 145;
+        card.contacts.forEach((contact, index) => {
+            const rowY = contactStart + index * 24;
+            doc.roundedRect(x + 15, rowY, 16, 16, 3).fill(iconColors[index]);
+            doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(7)
+                .text(iconLetters[index], x + 15, rowY + 5, { width: 16, align: "center" });
+            doc.fillColor("#172033").font("Helvetica-Bold").fontSize(6.8)
+                .text(contact, x + 39, rowY + 5, { width: width - 50 });
+        });
+    }
+    drawProductCard(doc, product, image, logo, x, y, width, height, color) {
+        doc.rect(x, y, width, height).lineWidth(0.8).stroke(color);
+        const imageHeight = 116;
+        if (image) {
+            try {
+                doc.image(image, x + 6, y + 5, { fit: [width - 12, imageHeight - 10], align: "center", valign: "center" });
+            }
+            catch {
+                this.drawImagePlaceholder(doc, logo, x, y, width, imageHeight);
+            }
+        }
+        else {
+            this.drawImagePlaceholder(doc, logo, x, y, width, imageHeight);
+        }
+        doc.rect(x, y + imageHeight, width, 82).fill(color);
+        doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(8.5)
+            .text(product.description.toUpperCase(), x + 7, y + imageHeight + 9, {
+            width: width - 14,
+            height: 34,
+            align: "center",
+            ellipsis: true,
+        });
+        doc.moveTo(x + 12, y + imageHeight + 53).lineTo(x + width - 12, y + imageHeight + 53)
+            .lineWidth(1).stroke("#FFFFFF");
+        doc.fontSize(9).text(product.code, x + 7, y + imageHeight + 62, {
+            width: width - 14,
+            align: "center",
+        });
+        doc.rect(x, y + height - 20, width, 20).fill("#FFFFFF");
+        doc.fillColor(color).font("Helvetica-Bold").fontSize(8.5)
+            .text(`UOM: ${product.uom}`, x + 7, y + height - 14, { width: width / 2 })
+            .text(`RM ${Number(product.price).toFixed(2)}`, x + width / 2 - 3, y + height - 14, {
+            width: width / 2 - 5,
+            align: "right",
+        });
+    }
+    drawImagePlaceholder(doc, logo, x, y, width, height) {
+        doc.save();
+        doc.rect(x + 1, y + 1, width - 2, height - 2).fill("#FAFAFA");
+        if (logo) {
+            doc.opacity(0.1);
+            doc.image(logo, x + 22, y + 18, {
+                fit: [width - 44, height - 36],
+                align: "center",
+                valign: "center",
+            });
+        }
+        else {
+            doc.opacity(0.3).fillColor("#111111").font("Helvetica-Bold").fontSize(10)
+                .text("RENGA", x + 5, y + height / 2 - 5, {
+                width: width - 10,
+                align: "center",
+            });
+        }
+        doc.restore();
+    }
+    displayDate(value) {
+        const [year, month, day] = value.split("-");
+        return `${day}-${month}-${year}`;
+    }
+    categoryColor(categoryName) {
+        let hash = 0;
+        for (const character of categoryName.toUpperCase()) {
+            hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+        }
+        return CATEGORY_COLORS[hash % CATEGORY_COLORS.length];
+    }
+    localAsset(relativePath) {
+        const path = (0, node_path_1.join)(process.cwd(), relativePath);
+        return (0, node_fs_1.existsSync)(path) ? (0, node_fs_1.readFileSync)(path) : null;
+    }
+    async imageBuffer(url) {
+        if (!url)
+            return null;
+        try {
+            if (url.startsWith("/uploads/")) {
+                const path = (0, node_path_1.join)(process.cwd(), url.replace(/^\/uploads\//, "uploads/"));
+                return (0, node_fs_1.existsSync)(path) ? (0, node_fs_1.readFileSync)(path) : null;
+            }
+            if (/^https?:\/\//i.test(url)) {
+                const parsed = new URL(url);
+                if (["localhost", "127.0.0.1"].includes(parsed.hostname) && parsed.pathname.startsWith("/uploads/")) {
+                    const path = (0, node_path_1.join)(process.cwd(), parsed.pathname.replace(/^\/uploads\//, "uploads/"));
+                    return (0, node_fs_1.existsSync)(path) ? (0, node_fs_1.readFileSync)(path) : null;
+                }
+                const response = await fetch(url);
+                if (!response.ok)
+                    return null;
+                return Buffer.from(await response.arrayBuffer());
+            }
+        }
+        catch {
+            return null;
+        }
+        return null;
+    }
+};
+exports.CatalogueService = CatalogueService;
+exports.CatalogueService = CatalogueService = __decorate([
+    (0, common_1.Injectable)(),
+    __param(0, (0, typeorm_1.InjectRepository)(entities_1.Product)),
+    __param(1, (0, typeorm_1.InjectRepository)(entities_1.Category)),
+    __param(2, (0, typeorm_1.InjectRepository)(entities_1.DesignSetting)),
+    __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
+        typeorm_2.Repository])
+], CatalogueService);
+let CatalogueController = class CatalogueController {
+    catalogue;
+    constructor(catalogue) {
+        this.catalogue = catalogue;
+    }
+    async generate(input, response) {
+        const pdf = await this.catalogue.generate(input);
+        const safeTitle = input.title.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-|-$/g, "") || "catalogue";
+        response.set({
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename="${safeTitle}.pdf"`,
+            "Content-Length": pdf.length,
+        });
+        response.end(pdf);
+    }
+};
+exports.CatalogueController = CatalogueController;
+__decorate([
+    (0, common_1.Post)("generate"),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], CatalogueController.prototype, "generate", null);
+exports.CatalogueController = CatalogueController = __decorate([
+    (0, common_1.Controller)("catalogues"),
+    __metadata("design:paramtypes", [CatalogueService])
+], CatalogueController);
+//# sourceMappingURL=catalogue.js.map

@@ -1,0 +1,16 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: rengas_admin
+      MYSQL_ROOT_PASSWORD: root
+    ports: ["3307:3306"]
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+  adminer:
+    image: adminer
+    ports: ["8080:8080"]
+    depends_on: [mysql]
+volumes:
+  mysql_data:
