@@ -312,9 +312,8 @@ aside {
 }
 .topbar nav {
   display: flex;
-  gap: 9px;
+  gap: 10px;
   align-items: center;
-  justify-content: flex-end;
   flex-wrap: wrap;
   min-width: 0;
 }
