@@ -48,6 +48,7 @@ export function Products({
 }: any) {
   const [items, setItems] = useState<Product[]>([]);
   const [q, setQ] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState("description");
   const [currentPage, setCurrentPage] = useState(1);
   const [viewing, setViewing] = useState<Product | null>(null);
@@ -56,7 +57,7 @@ export function Products({
 
   const load = () => {
     setLoading(true);
-    request("/products?search=" + encodeURIComponent(q) + "&refresh=" + refresh)
+    request("/products?search=" + encodeURIComponent(debouncedQuery) + "&refresh=" + refresh)
       .then(setItems)
       .catch(() =>
         setToast({ type: "error", message: "Products could not be loaded" }),
@@ -64,7 +65,12 @@ export function Products({
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [q, refresh]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(q.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [q]);
+
+  useEffect(load, [debouncedQuery, refresh]);
 
   const shown = useMemo(
     () =>
@@ -177,6 +183,8 @@ export function Products({
                 }`}
                 src={product.imageUrl || "/logo.png"}
                 alt={product.description || "Product"}
+                loading="lazy"
+                decoding="async"
                 onError={(event) => {
                   event.currentTarget.src = "/logo.png";
                   event.currentTarget.classList.add("default-product-logo");

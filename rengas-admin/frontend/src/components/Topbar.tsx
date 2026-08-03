@@ -39,11 +39,17 @@ export function Topbar({
   };
   useEffect(() => {
     loadNotifications();
-    const id = setInterval(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
       loadNotifications();
       setSyncTime(new Date());
-    }, 15000);
-    return () => clearInterval(id);
+    };
+    const id = window.setInterval(refreshWhenVisible, 60000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, []);
   async function importPrice(file?: File) {
     if (!file) return;

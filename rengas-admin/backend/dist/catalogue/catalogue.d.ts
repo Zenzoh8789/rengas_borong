@@ -23,6 +23,7 @@ export declare class CatalogueService {
     private categoryColor;
     private localAsset;
     private imageBuffer;
+    private pdfImage;
 }
 export declare class CatalogueController {
     private readonly catalogue;

@@ -10,7 +10,7 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
-    "incremental": true,
+    "incremental": false,
     "strict": false,
     "skipLibCheck": true
   },

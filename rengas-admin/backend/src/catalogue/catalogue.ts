@@ -60,8 +60,9 @@ export class CatalogueService {
     });
     const design = await this.designs.findOneBy({ id: 1 });
     const logo = this.localAsset("../frontend/logo.png");
-    const grayscaleLogo =
-      this.localAsset("assets/default-product-logo-grayscale.png") || logo;
+    // Use one logo source everywhere. The placeholder renderer applies its own
+    // low opacity, so replacing frontend/logo.png also updates PDF watermarks.
+    const grayscaleLogo = logo;
     const catalogueQr = await QRCode.toBuffer(COMPANY_URL, {
       type: "png",
       width: 320,
@@ -71,11 +72,14 @@ export class CatalogueService {
     const topBanner = await this.imageBuffer(design?.topBannerUrl);
     const stockImage = await this.imageBuffer(design?.productPhotoUrl);
     const productImages = new Map<number, Buffer | null>();
-    await Promise.all(
-      products.map(async (product) => {
-        productImages.set(product.id, await this.imageBuffer(product.imageUrl));
-      }),
-    );
+    // Keep memory and open-file usage predictable for large catalogues.
+    for (let start = 0; start < products.length; start += 24) {
+      const batch = products.slice(start, start + 24);
+      const images = await Promise.all(
+        batch.map((product) => this.imageBuffer(product.imageUrl)),
+      );
+      batch.forEach((product, index) => productImages.set(product.id, images[index]));
+    }
 
     const doc = new PDFDocument({
       size: "A4",
@@ -466,7 +470,9 @@ export class CatalogueService {
 
   private localAsset(relativePath: string) {
     const path = join(process.cwd(), relativePath);
-    return existsSync(path) ? readFileSync(path) : null;
+    // PDFKit accepts PNG and JPEG only. Validate local assets as strictly as
+    // uploaded/remote images so a renamed WebP/SVG cannot crash generation.
+    return existsSync(path) ? this.pdfImage(readFileSync(path)) : null;
   }
 
   private async imageBuffer(url?: string | null): Promise<Buffer | null> {
@@ -474,22 +480,33 @@ export class CatalogueService {
     try {
       if (url.startsWith("/uploads/")) {
         const path = join(process.cwd(), url.replace(/^\/uploads\//, "uploads/"));
-        return existsSync(path) ? readFileSync(path) : null;
+        return existsSync(path) ? this.pdfImage(readFileSync(path)) : null;
       }
       if (/^https?:\/\//i.test(url)) {
         const parsed = new URL(url);
         if (["localhost", "127.0.0.1"].includes(parsed.hostname) && parsed.pathname.startsWith("/uploads/")) {
           const path = join(process.cwd(), parsed.pathname.replace(/^\/uploads\//, "uploads/"));
-          return existsSync(path) ? readFileSync(path) : null;
+          return existsSync(path) ? this.pdfImage(readFileSync(path)) : null;
         }
         const response = await fetch(url);
         if (!response.ok) return null;
-        return Buffer.from(await response.arrayBuffer());
+        const contentLength = Number(response.headers.get("content-length") || 0);
+        if (contentLength > 12 * 1024 * 1024) return null;
+        return this.pdfImage(Buffer.from(await response.arrayBuffer()));
       }
     } catch {
       return null;
     }
     return null;
+  }
+
+  private pdfImage(buffer: Buffer): Buffer | null {
+    if (buffer.length < 8 || buffer.length > 12 * 1024 * 1024) return null;
+    const isPng = buffer.subarray(0, 8).equals(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+    return isPng || isJpeg ? buffer : null;
   }
 }
 

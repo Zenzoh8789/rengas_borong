@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.pnpm-store/
+.npm-cache/
+*.log
+backend/.env
+backend/uploads/*
+!backend/uploads/.gitkeep
