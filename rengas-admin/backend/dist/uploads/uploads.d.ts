@@ -1,6 +1,5 @@
-import { Request } from "express";
 export declare class UploadsController {
-    upload(file: any, request: Request): {
+    upload(file: Express.Multer.File): {
         imageUrl: string;
     };
 }

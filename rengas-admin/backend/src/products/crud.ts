@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Injectable,
   Param,
   ParseIntPipe,
@@ -12,6 +13,7 @@ import {
   Query,
   UploadedFiles,
   UseInterceptors,
+  StreamableFile,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { ILike, Repository } from "typeorm";
@@ -24,11 +26,14 @@ import * as XLSX from "xlsx";
 import {
   Category,
   Customer,
+  DesignSetting,
   Notification,
   NotificationType,
   Order,
   OrderItem,
+  OrderStatus,
   Product,
+  User,
 } from "../entities";
 
 @Injectable()
@@ -398,6 +403,145 @@ export class CrudService {
   ordersAll() {
     return this.orders.find({ order: { orderDate: "DESC" } });
   }
+  async updateOrder(id: number, body: any) {
+    const order = await this.orders.findOne({
+      where: { id },
+      relations: {
+        customer: true,
+        items: {
+          product: true,
+        },
+      },
+    });
+
+    if (!order) {
+      throw new BadRequestException("Order not found");
+    }
+
+    /*
+    * Print button sends action: "PRINT".
+    * Only update the status; do not modify the order items.
+    */
+    if (body.action === "PRINT") {
+      order.status = OrderStatus.PRINTED;
+      return this.orders.save(order);
+    }
+
+    /*
+    * Any normal edit/save automatically becomes MODIFIED.
+    */
+    if (body.orderDate) {
+      order.orderDate = body.orderDate;
+    }
+
+    if (body.customerId) {
+      order.customer = await this.customers.findOneByOrFail({
+        id: Number(body.customerId),
+      });
+    }
+
+    if (Array.isArray(body.items)) {
+      await this.orderItems.delete({
+        order: {
+          id: order.id,
+        },
+      });
+
+      const newItems = await Promise.all(
+        body.items.map(async (item: any) => {
+          const product = await this.products.findOneByOrFail({
+            id: Number(item.productId),
+          });
+
+          return this.orderItems.create({
+            order,
+            product,
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unitPrice),
+          });
+        }),
+      );
+
+      await this.orderItems.save(newItems);
+      order.items = newItems;
+    }
+
+    if (body.status && Object.values(OrderStatus).includes(body.status)) {
+      order.status = body.status as OrderStatus;
+    } else {
+      order.status = OrderStatus.MODIFIED;
+    }
+    await this.orders.save(order);
+
+    return this.orders.findOneOrFail({
+      where: {
+        id: order.id,
+      },
+      relations: {
+        customer: true,
+        items: {
+          product: true,
+        },
+      },
+    });
+  }
+  async deleteOrder(id: number) {
+    await this.orderItems.delete({ order: { id } });
+    return this.orders.delete(id);
+  }
+  async exportOrders(filters: {
+    date?: string;
+    from?: string;
+    to?: string;
+    month?: string;
+    customerId?: number;
+  } = {}) {
+    const allOrders = await this.ordersAll();
+    const orders = allOrders.filter((order) => {
+      if (filters.date) return order.orderDate === filters.date;
+      if (filters.from && filters.to) {
+        return order.orderDate >= filters.from && order.orderDate <= filters.to;
+      }
+      if (filters.month) return order.orderDate.startsWith(filters.month);
+      if (filters.customerId) return order.customer?.id === filters.customerId;
+      return true;
+    });
+    const rows = orders.flatMap((o) => o.items.length ? o.items.map((i) => ({
+      "Order ID": o.orderNo, Date: o.orderDate, Status: o.status,
+      Customer: o.customer?.name || "", Address: o.customer?.address || "",
+      "TIN Number": o.customer?.tinNumber || "", Phone: o.customer?.phoneNumber || "",
+      WhatsApp: o.customer?.whatsappNumber || "", "Product Code": i.product?.code || "",
+      Product: i.product?.description || "", UOM: i.product?.uom || "",
+      Quantity: Number(i.quantity), "Unit Price (RM)": Number(i.unitPrice),
+      "Line Total (RM)": Number(i.quantity) * Number(i.unitPrice),
+    })) : [{ "Order ID": o.orderNo, Date: o.orderDate, Status: o.status, Customer: o.customer?.name || "" }]);
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, "Orders");
+    return XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+  }
+  async importCustomers(file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException("Select a CSV or Excel file");
+    const workbook = XLSX.read(file.buffer, { type: "buffer" });
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
+    const value = (row: Record<string, any>, names: string[]) => {
+      const key = Object.keys(row).find(k => names.includes(k.trim().toLowerCase().replace(/[^a-z0-9]/g, "")));
+      return key ? String(row[key]).trim() : "";
+    };
+    const customers = rows.map(row => this.customers.create({
+      name: value(row, ["name", "customername"]), address: value(row, ["address"]),
+      tinNumber: value(row, ["tin", "tinnumber"]), phoneNumber: value(row, ["phone", "phonenumber"]),
+      whatsappNumber: value(row, ["whatsapp", "whatsappnumber"]),
+    })).filter(customer => customer.name);
+    if (!customers.length) {
+      throw new BadRequestException("No valid customers found. Use separate columns: Name, Address, TIN Number, Phone Number, WhatsApp Number.");
+    }
+    if (customers.some(customer => /street\s*,\s*city\s*,\s*state/i.test(customer.address || ""))) {
+      throw new BadRequestException("The address column contains a CSV header. Please upload a correctly separated CSV or Excel sheet.");
+    }
+    await this.customers.save(customers);
+    return { imported: customers.length };
+  }
   async stats() {
     const customers = await this.customers.count();
     const orders = await this.orders.find();
@@ -476,6 +620,11 @@ export class CrudController {
   @Post("customers") addCustomer(@Body() b: any) {
     return this.s.addCustomer(b);
   }
+  @Post("customers/bulk-upload")
+  @UseInterceptors(FileFieldsInterceptor([{ name: "file", maxCount: 1 }], { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
+  bulkCustomers(@UploadedFiles() files: { file?: Express.Multer.File[] }) {
+    return this.s.importCustomers(files?.file?.[0]);
+  }
   @Patch("customers/:id") editCustomer(
     @Param("id", ParseIntPipe) id: number,
     @Body() b: any,
@@ -490,6 +639,36 @@ export class CrudController {
   }
   @Get("orders") orders() {
     return this.s.ordersAll();
+  }
+  @Patch("orders/:id")
+  editOrder(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() body: any,
+  ) {
+    return this.s.updateOrder(id, body);
+  }
+  @Delete("orders/:id") delOrder(@Param("id", ParseIntPipe) id: number) {
+    return this.s.deleteOrder(id);
+  }
+  @Get("orders-export")
+  @Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  @Header("Content-Disposition", "attachment; filename=order-details.xlsx")
+  async exportOrders(
+    @Query("date") date = "",
+    @Query("from") from = "",
+    @Query("to") to = "",
+    @Query("month") month = "",
+    @Query("customerId") customerId = "",
+  ) {
+    return new StreamableFile(
+      await this.s.exportOrders({
+        date: date || undefined,
+        from: from || undefined,
+        to: to || undefined,
+        month: month || undefined,
+        customerId: customerId ? Number(customerId) : undefined,
+      }),
+    );
   }
   @Get("dashboard/stats") stats() {
     return this.s.stats();

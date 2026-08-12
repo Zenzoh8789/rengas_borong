@@ -289,6 +289,125 @@ let CrudService = class CrudService {
     ordersAll() {
         return this.orders.find({ order: { orderDate: "DESC" } });
     }
+    async updateOrder(id, body) {
+        const order = await this.orders.findOne({
+            where: { id },
+            relations: {
+                customer: true,
+                items: {
+                    product: true,
+                },
+            },
+        });
+        if (!order) {
+            throw new common_1.BadRequestException("Order not found");
+        }
+        if (body.action === "PRINT") {
+            order.status = entities_1.OrderStatus.PRINTED;
+            return this.orders.save(order);
+        }
+        if (body.orderDate) {
+            order.orderDate = body.orderDate;
+        }
+        if (body.customerId) {
+            order.customer = await this.customers.findOneByOrFail({
+                id: Number(body.customerId),
+            });
+        }
+        if (Array.isArray(body.items)) {
+            await this.orderItems.delete({
+                order: {
+                    id: order.id,
+                },
+            });
+            const newItems = await Promise.all(body.items.map(async (item) => {
+                const product = await this.products.findOneByOrFail({
+                    id: Number(item.productId),
+                });
+                return this.orderItems.create({
+                    order,
+                    product,
+                    quantity: Number(item.quantity),
+                    unitPrice: Number(item.unitPrice),
+                });
+            }));
+            await this.orderItems.save(newItems);
+            order.items = newItems;
+        }
+        if (body.status && Object.values(entities_1.OrderStatus).includes(body.status)) {
+            order.status = body.status;
+        }
+        else {
+            order.status = entities_1.OrderStatus.MODIFIED;
+        }
+        await this.orders.save(order);
+        return this.orders.findOneOrFail({
+            where: {
+                id: order.id,
+            },
+            relations: {
+                customer: true,
+                items: {
+                    product: true,
+                },
+            },
+        });
+    }
+    async deleteOrder(id) {
+        await this.orderItems.delete({ order: { id } });
+        return this.orders.delete(id);
+    }
+    async exportOrders(filters = {}) {
+        const allOrders = await this.ordersAll();
+        const orders = allOrders.filter((order) => {
+            if (filters.date)
+                return order.orderDate === filters.date;
+            if (filters.from && filters.to) {
+                return order.orderDate >= filters.from && order.orderDate <= filters.to;
+            }
+            if (filters.month)
+                return order.orderDate.startsWith(filters.month);
+            if (filters.customerId)
+                return order.customer?.id === filters.customerId;
+            return true;
+        });
+        const rows = orders.flatMap((o) => o.items.length ? o.items.map((i) => ({
+            "Order ID": o.orderNo, Date: o.orderDate, Status: o.status,
+            Customer: o.customer?.name || "", Address: o.customer?.address || "",
+            "TIN Number": o.customer?.tinNumber || "", Phone: o.customer?.phoneNumber || "",
+            WhatsApp: o.customer?.whatsappNumber || "", "Product Code": i.product?.code || "",
+            Product: i.product?.description || "", UOM: i.product?.uom || "",
+            Quantity: Number(i.quantity), "Unit Price (RM)": Number(i.unitPrice),
+            "Line Total (RM)": Number(i.quantity) * Number(i.unitPrice),
+        })) : [{ "Order ID": o.orderNo, Date: o.orderDate, Status: o.status, Customer: o.customer?.name || "" }]);
+        const sheet = XLSX.utils.json_to_sheet(rows);
+        const book = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(book, sheet, "Orders");
+        return XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+    }
+    async importCustomers(file) {
+        if (!file)
+            throw new common_1.BadRequestException("Select a CSV or Excel file");
+        const workbook = XLSX.read(file.buffer, { type: "buffer" });
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
+        const value = (row, names) => {
+            const key = Object.keys(row).find(k => names.includes(k.trim().toLowerCase().replace(/[^a-z0-9]/g, "")));
+            return key ? String(row[key]).trim() : "";
+        };
+        const customers = rows.map(row => this.customers.create({
+            name: value(row, ["name", "customername"]), address: value(row, ["address"]),
+            tinNumber: value(row, ["tin", "tinnumber"]), phoneNumber: value(row, ["phone", "phonenumber"]),
+            whatsappNumber: value(row, ["whatsapp", "whatsappnumber"]),
+        })).filter(customer => customer.name);
+        if (!customers.length) {
+            throw new common_1.BadRequestException("No valid customers found. Use separate columns: Name, Address, TIN Number, Phone Number, WhatsApp Number.");
+        }
+        if (customers.some(customer => /street\s*,\s*city\s*,\s*state/i.test(customer.address || ""))) {
+            throw new common_1.BadRequestException("The address column contains a CSV header. Please upload a correctly separated CSV or Excel sheet.");
+        }
+        await this.customers.save(customers);
+        return { imported: customers.length };
+    }
     async stats() {
         const customers = await this.customers.count();
         const orders = await this.orders.find();
@@ -360,6 +479,9 @@ let CrudController = class CrudController {
     addCustomer(b) {
         return this.s.addCustomer(b);
     }
+    bulkCustomers(files) {
+        return this.s.importCustomers(files?.file?.[0]);
+    }
     editCustomer(id, b) {
         return this.s.updateCustomer(id, b);
     }
@@ -371,6 +493,21 @@ let CrudController = class CrudController {
     }
     orders() {
         return this.s.ordersAll();
+    }
+    editOrder(id, body) {
+        return this.s.updateOrder(id, body);
+    }
+    delOrder(id) {
+        return this.s.deleteOrder(id);
+    }
+    async exportOrders(date = "", from = "", to = "", month = "", customerId = "") {
+        return new common_1.StreamableFile(await this.s.exportOrders({
+            date: date || undefined,
+            from: from || undefined,
+            to: to || undefined,
+            month: month || undefined,
+            customerId: customerId ? Number(customerId) : undefined,
+        }));
     }
     stats() {
         return this.s.stats();
@@ -461,6 +598,14 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], CrudController.prototype, "addCustomer", null);
 __decorate([
+    (0, common_1.Post)("customers/bulk-upload"),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileFieldsInterceptor)([{ name: "file", maxCount: 1 }], { storage: (0, multer_1.memoryStorage)(), limits: { fileSize: 10 * 1024 * 1024 } })),
+    __param(0, (0, common_1.UploadedFiles)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], CrudController.prototype, "bulkCustomers", null);
+__decorate([
     (0, common_1.Patch)("customers/:id"),
     __param(0, (0, common_1.Param)("id", common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
@@ -487,6 +632,34 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], CrudController.prototype, "orders", null);
+__decorate([
+    (0, common_1.Patch)("orders/:id"),
+    __param(0, (0, common_1.Param)("id", common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Object]),
+    __metadata("design:returntype", void 0)
+], CrudController.prototype, "editOrder", null);
+__decorate([
+    (0, common_1.Delete)("orders/:id"),
+    __param(0, (0, common_1.Param)("id", common_1.ParseIntPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number]),
+    __metadata("design:returntype", void 0)
+], CrudController.prototype, "delOrder", null);
+__decorate([
+    (0, common_1.Get)("orders-export"),
+    (0, common_1.Header)("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    (0, common_1.Header)("Content-Disposition", "attachment; filename=order-details.xlsx"),
+    __param(0, (0, common_1.Query)("date")),
+    __param(1, (0, common_1.Query)("from")),
+    __param(2, (0, common_1.Query)("to")),
+    __param(3, (0, common_1.Query)("month")),
+    __param(4, (0, common_1.Query)("customerId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], CrudController.prototype, "exportOrders", null);
 __decorate([
     (0, common_1.Get)("dashboard/stats"),
     __metadata("design:type", Function),

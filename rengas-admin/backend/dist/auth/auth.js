@@ -46,17 +46,27 @@ let AuthService = class AuthService {
         this.jwt = jwt;
     }
     async login(dto) {
-        const user = await this.users.findOne({ where: { username: dto.username, role: dto.role } });
+        const user = await this.users.findOne({
+            where: { username: dto.username, role: dto.role },
+        });
         if (!user || !(await bcrypt.compare(dto.password, user.passwordHash)))
-            throw new common_1.UnauthorizedException('Invalid credentials');
-        return { accessToken: await this.jwt.signAsync({ sub: user.id, username: user.username, role: user.role }), user: { username: user.username, role: user.role } };
+            throw new common_1.UnauthorizedException("Invalid credentials");
+        return {
+            accessToken: await this.jwt.signAsync({
+                sub: user.id,
+                username: user.username,
+                role: user.role,
+            }),
+            user: { username: user.username, role: user.role },
+        };
     }
 };
 exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(entities_1.User)),
-    __metadata("design:paramtypes", [typeorm_2.Repository, jwt_1.JwtService])
+    __metadata("design:paramtypes", [typeorm_2.Repository,
+        jwt_1.JwtService])
 ], AuthService);
 let AuthController = class AuthController {
     auth;
@@ -67,28 +77,57 @@ let AuthController = class AuthController {
     }
     async login(dto, response) {
         const result = await this.auth.login(dto);
-        response.cookie('access_token', result.accessToken, { httpOnly: true, secure: false, sameSite: 'lax', maxAge: 28800000, path: '/' });
+        response.cookie("access_token", result.accessToken, {
+            httpOnly: true,
+            secure: false,
+            sameSite: "lax",
+            maxAge: 28800000,
+            path: "/",
+        });
         return { user: result.user };
     }
-    async me(request) {
+    async me(request, response) {
         const token = request.cookies?.access_token;
-        if (!token)
-            return { authenticated: false, role: null };
+        if (!token) {
+            return {
+                authenticated: false,
+                role: null,
+            };
+        }
         try {
-            return await this.jwt.verifyAsync(token);
+            const user = await this.jwt.verifyAsync(token);
+            return {
+                authenticated: true,
+                username: user.username,
+                role: user.role,
+            };
         }
         catch {
-            throw new common_1.UnauthorizedException('Session expired');
+            response.clearCookie("access_token", {
+                httpOnly: true,
+                secure: false,
+                sameSite: "lax",
+                path: "/",
+            });
+            return {
+                authenticated: false,
+                role: null,
+            };
         }
     }
     logout(response) {
-        response.clearCookie('access_token', { httpOnly: true, secure: false, sameSite: 'lax', path: '/' });
+        response.clearCookie("access_token", {
+            httpOnly: true,
+            secure: false,
+            sameSite: "lax",
+            path: "/",
+        });
         return { success: true };
     }
 };
 exports.AuthController = AuthController;
 __decorate([
-    (0, common_1.Post)('login'),
+    (0, common_1.Post)("login"),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
@@ -96,21 +135,23 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "login", null);
 __decorate([
-    (0, common_1.Get)('me'),
+    (0, common_1.Get)("me"),
     __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "me", null);
 __decorate([
-    (0, common_1.Post)('logout'),
+    (0, common_1.Post)("logout"),
     __param(0, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "logout", null);
 exports.AuthController = AuthController = __decorate([
-    (0, common_1.Controller)('auth'),
-    __metadata("design:paramtypes", [AuthService, jwt_1.JwtService])
+    (0, common_1.Controller)("auth"),
+    __metadata("design:paramtypes", [AuthService,
+        jwt_1.JwtService])
 ], AuthController);
 //# sourceMappingURL=auth.js.map

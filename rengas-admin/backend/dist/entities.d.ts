@@ -1,6 +1,7 @@
 export declare enum Role {
     ADMIN = "ADMIN",
-    ORDER_ADMIN = "ORDER_ADMIN"
+    ORDER_ADMIN = "ORDER_ADMIN",
+    CUSTOMER = "CUSTOMER"
 }
 export declare class User {
     id: number;
@@ -26,10 +27,11 @@ export declare class Product {
 export declare class Customer {
     id: number;
     name: string;
-    address: string;
-    tinNumber: string;
-    phoneNumber: string;
-    whatsappNumber: string;
+    companyName?: string;
+    tinNumber?: string;
+    address?: string;
+    phoneNumber?: string;
+    whatsappNumber?: string;
 }
 export declare enum OrderStatus {
     VIEW = "VIEW",

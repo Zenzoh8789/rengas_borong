@@ -1,14 +1,22 @@
 import {
+  BadRequestException,
   Controller,
   Post,
-  Req,
   UploadedFile,
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { Request } from "express";
 import { diskStorage } from "multer";
-import { extname } from "path";
+import { existsSync, mkdirSync } from "fs";
+import { extname, join } from "path";
+
+const uploadDirectory = join(process.cwd(), "uploads");
+
+if (!existsSync(uploadDirectory)) {
+  mkdirSync(uploadDirectory, {
+    recursive: true,
+  });
+}
 
 @Controller("uploads")
 export class UploadsController {
@@ -16,26 +24,52 @@ export class UploadsController {
   @UseInterceptors(
     FileInterceptor("image", {
       storage: diskStorage({
-        destination: "./uploads",
+        destination: uploadDirectory,
+
         filename: (_request, file, callback) => {
-          callback(
-            null,
-            `${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`,
-          );
+          const extension = extname(
+            file.originalname,
+          ).toLowerCase();
+
+          const uniqueName = `${Date.now()}-${Math.round(
+            Math.random() * 1e9,
+          )}${extension}`;
+
+          callback(null, uniqueName);
         },
       }),
-      limits: { fileSize: 5 * 1024 * 1024 },
+
+      // No application-level file-size limit.
+
       fileFilter: (_request, file, callback) => {
-        callback(
-          null,
-          ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype),
-        );
+        const allowedTypes = [
+          "image/jpeg",
+          "image/png",
+          "image/webp",
+        ];
+
+        if (!allowedTypes.includes(file.mimetype)) {
+          return callback(
+            new BadRequestException(
+              "Only JPG, PNG and WEBP images are allowed.",
+            ),
+            false,
+          );
+        }
+
+        callback(null, true);
       },
     }),
   )
-  upload(@UploadedFile() file: any, @Req() request: Request) {
+  upload(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException(
+        "Please select a valid image.",
+      );
+    }
+
     return {
-      imageUrl: `${request.protocol}://${request.get("host")}/uploads/${file.filename}`,
+      imageUrl: `/uploads/${file.filename}`,
     };
   }
 }

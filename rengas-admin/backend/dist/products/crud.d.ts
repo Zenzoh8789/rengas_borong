@@ -1,3 +1,4 @@
+import { StreamableFile } from "@nestjs/common";
 import { Repository } from "typeorm";
 import { Category, Customer, Notification, NotificationType, Order, OrderItem, Product } from "../entities";
 export declare class CrudService {
@@ -37,6 +38,18 @@ export declare class CrudService {
     deleteCustomer(id: number): Promise<import("typeorm").DeleteResult>;
     clearCustomers(): Promise<void>;
     ordersAll(): Promise<Order[]>;
+    updateOrder(id: number, body: any): Promise<Order>;
+    deleteOrder(id: number): Promise<import("typeorm").DeleteResult>;
+    exportOrders(filters?: {
+        date?: string;
+        from?: string;
+        to?: string;
+        month?: string;
+        customerId?: number;
+    }): Promise<any>;
+    importCustomers(file?: Express.Multer.File): Promise<{
+        imported: number;
+    }>;
     stats(): Promise<{
         customers: number;
         today: number;
@@ -73,10 +86,18 @@ export declare class CrudController {
     delProduct(id: number): Promise<import("typeorm").DeleteResult>;
     customers(q?: string): Promise<Customer[]>;
     addCustomer(b: any): Promise<Customer[]>;
+    bulkCustomers(files: {
+        file?: Express.Multer.File[];
+    }): Promise<{
+        imported: number;
+    }>;
     editCustomer(id: number, b: any): Promise<import("typeorm").UpdateResult>;
     clearCustomers(): Promise<void>;
     delCustomer(id: number): Promise<import("typeorm").DeleteResult>;
     orders(): Promise<Order[]>;
+    editOrder(id: number, body: any): Promise<Order>;
+    delOrder(id: number): Promise<import("typeorm").DeleteResult>;
+    exportOrders(date?: string, from?: string, to?: string, month?: string, customerId?: string): Promise<StreamableFile>;
     stats(): Promise<{
         customers: number;
         today: number;

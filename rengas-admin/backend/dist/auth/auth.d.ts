@@ -1,7 +1,7 @@
-import { JwtService } from '@nestjs/jwt';
-import { Request, Response } from 'express';
-import { Repository } from 'typeorm';
-import { Role, User } from '../entities';
+import { JwtService } from "@nestjs/jwt";
+import { Request, Response } from "express";
+import { Repository } from "typeorm";
+import { Role, User } from "../entities";
 declare class LoginDto {
     username: string;
     password: string;
@@ -29,7 +29,15 @@ export declare class AuthController {
             role: Role;
         };
     }>;
-    me(request: Request): Promise<any>;
+    me(request: Request, response: Response): Promise<{
+        authenticated: boolean;
+        role: any;
+        username?: undefined;
+    } | {
+        authenticated: boolean;
+        username: any;
+        role: any;
+    }>;
     logout(response: Response): {
         success: boolean;
     };

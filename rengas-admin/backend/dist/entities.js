@@ -15,6 +15,7 @@ var Role;
 (function (Role) {
     Role["ADMIN"] = "ADMIN";
     Role["ORDER_ADMIN"] = "ORDER_ADMIN";
+    Role["CUSTOMER"] = "CUSTOMER";
 })(Role || (exports.Role = Role = {}));
 let User = class User {
     id;
@@ -113,8 +114,9 @@ exports.Product = Product = __decorate([
 let Customer = class Customer {
     id;
     name;
-    address;
+    companyName;
     tinNumber;
+    address;
     phoneNumber;
     whatsappNumber;
 };
@@ -124,23 +126,54 @@ __decorate([
     __metadata("design:type", Number)
 ], Customer.prototype, "id", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({
+        type: "varchar",
+        length: 150,
+    }),
     __metadata("design:type", String)
 ], Customer.prototype, "name", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({
+        name: "company_name",
+        type: "varchar",
+        length: 180,
+        nullable: true,
+    }),
     __metadata("design:type", String)
-], Customer.prototype, "address", void 0);
+], Customer.prototype, "companyName", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ name: "tin_number", nullable: true }),
+    (0, typeorm_1.Column)({
+        name: "tin_number",
+        type: "varchar",
+        length: 100,
+        nullable: true,
+    }),
     __metadata("design:type", String)
 ], Customer.prototype, "tinNumber", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ name: "phone_number", nullable: true }),
+    (0, typeorm_1.Column)({
+        type: "varchar",
+        length: 500,
+        nullable: true,
+    }),
+    __metadata("design:type", String)
+], Customer.prototype, "address", void 0);
+__decorate([
+    (0, typeorm_1.Column)({
+        name: "phone_number",
+        type: "varchar",
+        length: 40,
+        nullable: true,
+    }),
     __metadata("design:type", String)
 ], Customer.prototype, "phoneNumber", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ name: "whatsapp_number", nullable: true }),
+    (0, typeorm_1.Column)({
+        name: "whatsapp_number",
+        type: "varchar",
+        length: 40,
+        nullable: true,
+    }),
     __metadata("design:type", String)
 ], Customer.prototype, "whatsappNumber", void 0);
 exports.Customer = Customer = __decorate([

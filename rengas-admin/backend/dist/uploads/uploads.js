@@ -16,11 +16,21 @@ exports.UploadsController = void 0;
 const common_1 = require("@nestjs/common");
 const platform_express_1 = require("@nestjs/platform-express");
 const multer_1 = require("multer");
+const fs_1 = require("fs");
 const path_1 = require("path");
+const uploadDirectory = (0, path_1.join)(process.cwd(), "uploads");
+if (!(0, fs_1.existsSync)(uploadDirectory)) {
+    (0, fs_1.mkdirSync)(uploadDirectory, {
+        recursive: true,
+    });
+}
 let UploadsController = class UploadsController {
-    upload(file, request) {
+    upload(file) {
+        if (!file) {
+            throw new common_1.BadRequestException("Please select a valid image.");
+        }
         return {
-            imageUrl: `${request.protocol}://${request.get("host")}/uploads/${file.filename}`,
+            imageUrl: `/uploads/${file.filename}`,
         };
     }
 };
@@ -29,20 +39,28 @@ __decorate([
     (0, common_1.Post)("image"),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)("image", {
         storage: (0, multer_1.diskStorage)({
-            destination: "./uploads",
+            destination: uploadDirectory,
             filename: (_request, file, callback) => {
-                callback(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${(0, path_1.extname)(file.originalname)}`);
+                const extension = (0, path_1.extname)(file.originalname).toLowerCase();
+                const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${extension}`;
+                callback(null, uniqueName);
             },
         }),
-        limits: { fileSize: 5 * 1024 * 1024 },
         fileFilter: (_request, file, callback) => {
-            callback(null, ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype));
+            const allowedTypes = [
+                "image/jpeg",
+                "image/png",
+                "image/webp",
+            ];
+            if (!allowedTypes.includes(file.mimetype)) {
+                return callback(new common_1.BadRequestException("Only JPG, PNG and WEBP images are allowed."), false);
+            }
+            callback(null, true);
         },
     })),
     __param(0, (0, common_1.UploadedFile)()),
-    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], UploadsController.prototype, "upload", null);
 exports.UploadsController = UploadsController = __decorate([

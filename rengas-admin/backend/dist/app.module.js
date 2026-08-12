@@ -17,19 +17,64 @@ const entities_1 = require("./entities");
 const uploads_1 = require("./uploads/uploads");
 const features_1 = require("./features/features");
 const catalogue_1 = require("./catalogue/catalogue");
+const store_1 = require("./store/store");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            config_1.ConfigModule.forRoot({ isGlobal: true }),
-            typeorm_1.TypeOrmModule.forRoot({ type: 'mysql', host: process.env.DB_HOST || 'localhost', port: +(process.env.DB_PORT || 3307), username: process.env.DB_USER || 'root', password: process.env.DB_PASSWORD || 'root', database: process.env.DB_NAME || 'rengas_admin', entities: [entities_1.User, entities_1.Category, entities_1.Product, entities_1.Customer, entities_1.Order, entities_1.OrderItem, entities_1.Notification, entities_1.DesignSetting], synchronize: false }),
-            typeorm_1.TypeOrmModule.forFeature([entities_1.User, entities_1.Category, entities_1.Product, entities_1.Customer, entities_1.Order, entities_1.OrderItem, entities_1.Notification, entities_1.DesignSetting]),
-            jwt_1.JwtModule.register({ global: true, secret: process.env.JWT_SECRET || 'dev-secret', signOptions: { expiresIn: '8h' } })
+            config_1.ConfigModule.forRoot({ isGlobal: true, envFilePath: ".env", }),
+            typeorm_1.TypeOrmModule.forRoot({
+                type: "mysql",
+                host: process.env.DB_HOST || "localhost",
+                port: +(process.env.DB_PORT || 3307),
+                username: process.env.DB_USER || "root",
+                password: process.env.DB_PASSWORD || "root",
+                database: process.env.DB_NAME || "rengas_admin",
+                entities: [
+                    entities_1.User,
+                    entities_1.Category,
+                    entities_1.Product,
+                    entities_1.Customer,
+                    entities_1.Order,
+                    entities_1.OrderItem,
+                    entities_1.Notification,
+                    entities_1.DesignSetting,
+                ],
+                synchronize: false,
+            }),
+            typeorm_1.TypeOrmModule.forFeature([
+                entities_1.User,
+                entities_1.Category,
+                entities_1.Product,
+                entities_1.Customer,
+                entities_1.Order,
+                entities_1.OrderItem,
+                entities_1.Notification,
+                entities_1.DesignSetting,
+            ]),
+            jwt_1.JwtModule.register({
+                global: true,
+                secret: process.env.JWT_SECRET || "dev-secret",
+                signOptions: { expiresIn: "8h" },
+            }),
         ],
-        controllers: [auth_1.AuthController, crud_1.CrudController, uploads_1.UploadsController, features_1.FeaturesController, catalogue_1.CatalogueController],
-        providers: [auth_1.AuthService, crud_1.CrudService, features_1.FeaturesService, catalogue_1.CatalogueService]
+        controllers: [
+            auth_1.AuthController,
+            crud_1.CrudController,
+            uploads_1.UploadsController,
+            features_1.FeaturesController,
+            catalogue_1.CatalogueController,
+            store_1.StoreController,
+        ],
+        providers: [
+            auth_1.AuthService,
+            crud_1.CrudService,
+            features_1.FeaturesService,
+            catalogue_1.CatalogueService,
+            store_1.StoreService,
+        ],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

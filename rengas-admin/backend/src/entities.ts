@@ -13,6 +13,7 @@ import {
 export enum Role {
   ADMIN = "ADMIN",
   ORDER_ADMIN = "ORDER_ADMIN",
+  CUSTOMER = "CUSTOMER",
 }
 @Entity("users")
 export class User {
@@ -42,12 +43,53 @@ export class Product {
 }
 @Entity("customers")
 export class Customer {
-  @PrimaryGeneratedColumn() id: number;
-  @Column() name: string;
-  @Column({ nullable: true }) address: string;
-  @Column({ name: "tin_number", nullable: true }) tinNumber: string;
-  @Column({ name: "phone_number", nullable: true }) phoneNumber: string;
-  @Column({ name: "whatsapp_number", nullable: true }) whatsappNumber: string;
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column({
+    type: "varchar",
+    length: 150,
+  })
+  name: string;
+
+  @Column({
+    name: "company_name",
+    type: "varchar",
+    length: 180,
+    nullable: true,
+  })
+  companyName?: string;
+  
+  @Column({
+    name: "tin_number",
+    type: "varchar",
+    length: 100,
+    nullable: true,
+  })
+  tinNumber?: string;
+  
+  @Column({
+    type: "varchar",
+    length: 500,
+    nullable: true,
+  })
+  address?: string;
+  
+  @Column({
+    name: "phone_number",
+    type: "varchar",
+    length: 40,
+    nullable: true,
+  })
+  phoneNumber?: string;
+
+  @Column({
+    name: "whatsapp_number",
+    type: "varchar",
+    length: 40,
+    nullable: true,
+  })
+  whatsappNumber?: string;
 }
 export enum OrderStatus {
   VIEW = "VIEW",

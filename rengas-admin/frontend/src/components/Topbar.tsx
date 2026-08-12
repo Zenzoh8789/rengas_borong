@@ -158,21 +158,12 @@ export function Topbar({
               <Users />
               Customers
             </button>
-            <button className="green">
+            <button className="green" onClick={() => window.dispatchEvent(new Event("export-orders"))}>
               <Download />
               Export
             </button>
           </>
         )}
-        <button
-          onClick={() => {
-            onImported();
-            setSyncTime(new Date());
-          }}
-        >
-          <RefreshCw />
-          Refresh
-        </button>
        
         <div className="bell-wrap">
           <button

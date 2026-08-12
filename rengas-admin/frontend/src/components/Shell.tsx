@@ -31,6 +31,7 @@ export function Shell({
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [refresh, setRefresh] = useState(0);
   const [toast, setToast] = useState<ToastState>(loginToast);
+  const [orderCustomers, setOrderCustomers] = useState<Customer[]>([]);
   useEffect(() => {
     if (loginToast) onLoginToastShown();
   }, [loginToast, onLoginToastShown]);
@@ -42,6 +43,7 @@ export function Shell({
       );
   useEffect(() => {
     if (role === "ADMIN") loadCategories();
+    else request("/customers").then(setOrderCustomers).catch(() => setOrderCustomers([]));
   }, [role, refresh]);
   const filteredCategories = useMemo(
     () =>
@@ -50,14 +52,7 @@ export function Shell({
       ),
     [categories, sideQuery],
   );
-  const fakeCustomers = useMemo(
-    () =>
-      Array.from(
-        { length: 16 },
-        (_, i) => `Customer ${String(i + 1).padStart(3, "0")}`,
-      ).filter((n) => n.toLowerCase().includes(sideQuery.toLowerCase())),
-    [sideQuery],
-  );
+  const visibleCustomers = useMemo(() => orderCustomers.filter(c => [c.name,c.phoneNumber,c.address].join(" ").toLowerCase().includes(sideQuery.toLowerCase())), [orderCustomers, sideQuery]);
   return (
     <div className="app">
       <aside>
@@ -86,7 +81,7 @@ export function Shell({
         <div className="side-title">
           <b>{role === "ADMIN" ? "Categories" : "Customer Details"}</b>
           <span>
-            {role === "ADMIN" ? categories.length : fakeCustomers.length}{" "}
+            {role === "ADMIN" ? categories.length : visibleCustomers.length}{" "}
             {role === "ADMIN" ? "categories" : ""}
           </span>
         </div>
@@ -98,7 +93,7 @@ export function Shell({
           <span>
             {role === "ADMIN"
               ? categories.reduce((n, c) => n + (c.products?.length || 0), 0)
-              : 100}
+              : orderCustomers.length}
           </span>
         </button>
         {role === "ADMIN"
@@ -112,13 +107,13 @@ export function Shell({
                 <span>{c.products?.length || 0}</span>
               </button>
             ))
-          : fakeCustomers.map((name) => (
-              <button className="side-link" key={name}>
-                {name}
-                <span>1</span>
+          : visibleCustomers.map((customer) => (
+              <button className="side-link" key={customer.id}>
+                {customer.name}
+                <span>{customer.id}</span>
               </button>
             ))}
-        {(role === "ADMIN" ? filteredCategories : fakeCustomers).length ===
+        {(role === "ADMIN" ? filteredCategories : visibleCustomers).length ===
           0 && <p className="side-empty">No matches found</p>}
       </aside>
       <main className="content">
@@ -140,7 +135,7 @@ export function Shell({
             setToast={setToast}
           />
         ) : (
-          <Orders view={view} setModal={setModal} />
+          <Orders view={view as "orders" | "customers"} setModal={setModal} setToast={setToast} />
         )}
       </main>
       {modal === "product" && (
