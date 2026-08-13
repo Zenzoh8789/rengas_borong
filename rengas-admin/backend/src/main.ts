@@ -15,12 +15,16 @@ async function bootstrap() {
     prefix: "/uploads/",
   });
 
+  app.useStaticAssets(join(process.cwd(), "dist", "public"));
+
   app.setGlobalPrefix("api");
 
   const allowedOrigins = [
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:5175",
+    "https://rengatrading.in",
+    "https://www.rengatrading.in",
   ];
 
   app.enableCors({

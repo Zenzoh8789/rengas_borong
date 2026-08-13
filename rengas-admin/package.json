@@ -5,7 +5,7 @@
     "postinstall": "npm --prefix backend ci --include=dev && npm --prefix frontend ci --include=dev",
     "install:all": "npm --prefix backend install && npm --prefix frontend install",
     "dev": "concurrently \"npm --prefix backend run start:dev\" \"npm --prefix frontend run dev\"",
-    "build": "npm --prefix backend run build && npm --prefix frontend run build && node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});fs.cpSync('backend/dist','dist',{recursive:true})\"",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build && node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});fs.cpSync('backend/dist','dist',{recursive:true});fs.cpSync('frontend/dist','dist/public',{recursive:true})\"",
     "check": "npm run build",
     "start": "node dist/main.js",
     "start:backend": "npm --prefix backend run start:prod",
