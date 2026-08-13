@@ -7,9 +7,29 @@
     "dev": "concurrently \"npm --prefix backend run start:dev\" \"npm --prefix frontend run dev\"",
     "build": "npm --prefix backend run build && npm --prefix frontend run build && node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});fs.cpSync('backend/dist','dist',{recursive:true})\"",
     "check": "npm run build",
-    "start": "npm --prefix backend run start:prod",
+    "start": "node dist/main.js",
     "start:backend": "npm --prefix backend run start:prod",
     "start:frontend": "npm --prefix frontend run preview -- --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/jwt": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/typeorm": "^11.0.0",
+    "adm-zip": "^0.5.16",
+    "bcrypt": "^6.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "cookie-parser": "^1.4.7",
+    "mysql2": "^3.14.0",
+    "pdfkit": "^0.17.2",
+    "qrcode": "^1.5.4",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "typeorm": "^0.3.25",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"
