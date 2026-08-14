@@ -25,6 +25,7 @@ async function bootstrap() {
     "http://localhost:5175",
     "https://rengatrading.in",
     "https://www.rengatrading.in",
+    "https://order.rengatrading.in",
   ];
 
   app.enableCors({
