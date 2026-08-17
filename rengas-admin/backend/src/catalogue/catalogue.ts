@@ -60,13 +60,16 @@ export class CatalogueService {
     });
     const design = await this.designs.findOneBy({ id: 1 });
     const logo =
-      this.localAsset("frontend/logo.png") ||
-      this.localAsset("../frontend/logo.png");
+    this.localAsset("dist/public/logo.png") ||
+    this.localAsset("public/logo.png") ||
+    this.localAsset("frontend/logo.png") ||
+    this.localAsset("../frontend/logo.png");
 
     const grayscaleLogo =
-      this.localAsset("backend/assets/default-product-logo-grayscale.png") ||
-      this.localAsset("assets/default-product-logo-grayscale.png") ||
-      logo;
+    this.localAsset("dist/assets/default-product-logo-grayscale.png") ||
+    this.localAsset("assets/default-product-logo-grayscale.png") ||
+    this.localAsset("backend/assets/default-product-logo-grayscale.png") ||
+    logo;
     const catalogueQr = await QRCode.toBuffer(COMPANY_URL, {
       type: "png",
       width: 320,

@@ -5,7 +5,7 @@
     "start:dev": "nest start --watch",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "prebuild": "npm run clean",
-    "build": "nest build",
+    "build": "nest build && node -e \"const fs=require('fs');fs.cpSync('assets','dist/assets',{recursive:true})\"",
     "start:prod": "node dist/main.js"
   },
   "dependencies": {
