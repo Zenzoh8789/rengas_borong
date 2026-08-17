@@ -59,10 +59,14 @@ export class CatalogueService {
       order: { description: "ASC" },
     });
     const design = await this.designs.findOneBy({ id: 1 });
-    const logo = this.localAsset("../frontend/logo.png");
-    // Use one logo source everywhere. The placeholder renderer applies its own
-    // low opacity, so replacing frontend/logo.png also updates PDF watermarks.
-    const grayscaleLogo = logo;
+    const logo =
+      this.localAsset("frontend/logo.png") ||
+      this.localAsset("../frontend/logo.png");
+
+    const grayscaleLogo =
+      this.localAsset("backend/assets/default-product-logo-grayscale.png") ||
+      this.localAsset("assets/default-product-logo-grayscale.png") ||
+      logo;
     const catalogueQr = await QRCode.toBuffer(COMPANY_URL, {
       type: "png",
       width: 320,
@@ -399,7 +403,6 @@ export class CatalogueService {
     height: number,
     color: string,
   ) {
-    doc.rect(x, y, width, height).lineWidth(0.8).stroke(color);
     const imageHeight = 116;
     if (image) {
       try {
@@ -432,6 +435,21 @@ export class CatalogueService {
         width: width / 2 - 5,
         align: "right",
       });
+
+    // Draw the border after every fill and keep the full stroke inside the card.
+    const borderInset = 0.75;
+    doc.save();
+    doc
+      .rect(
+        x + borderInset,
+        y + borderInset,
+        width - borderInset * 2,
+        height - borderInset * 2,
+      )
+      .lineWidth(1.5)
+      .strokeOpacity(1)
+      .stroke(color);
+    doc.restore();
   }
 
   private drawImagePlaceholder(
@@ -447,7 +465,7 @@ export class CatalogueService {
     if (logo) {
       // A low-opacity neutral watermark keeps missing-image products recognizable
       // without competing with real product photography.
-      doc.opacity(0.1);
+      doc.opacity(0.22);
       doc.image(logo, x + 22, y + 18, {
         fit: [width - 44, height - 36],
         align: "center",
