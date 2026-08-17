@@ -3076,6 +3076,8 @@ aside {
   font-size: 14px;
 }
 .catalogue-search > span {
+  align-self: center;
+  justify-self: end;
   padding: 10px 14px;
   border-radius: 999px;
   color: #09008c;
@@ -3275,13 +3277,6 @@ aside {
     right: 0;
     left: auto;
   }
-  .catalogue-search {
-    grid-template-columns: auto 1fr;
-  }
-  .catalogue-search > span {
-    grid-column: 1/-1;
-    justify-self: end;
-  }
 }
 @media (max-width: 800px) {
   .bell-wrap {
@@ -3325,15 +3320,6 @@ aside {
   .catalogue-search > span {
     justify-self: stretch;
     text-align: center;
-  }
-  .catalogue-check {
-    padding: 10px;
-  }
-  .design-upload {
-    padding: 13px;
-  }
-  .notification-panel article {
-    padding: 12px;
   }
 }
 

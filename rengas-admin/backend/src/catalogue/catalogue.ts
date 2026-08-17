@@ -146,21 +146,26 @@ export class CatalogueService {
       // Lower the uploaded background strength so white cover text stays clear.
       doc.rect(coverInset, coverInset, coverWidth, middleTop - coverInset)
         .fill("#4C1D75");
-      doc.save()
-        .rect(
+      doc.save();
+      try {
+        doc.rect(
           coverInset,
           coverInset,
           coverWidth,
           middleTop - coverInset,
         )
-        .clip()
-        .opacity(0.58)
-        .image(topBanner, coverInset, coverInset, {
-          cover: [coverWidth, middleTop - coverInset],
-          align: "center",
-          valign: "center",
-        })
-        .restore();
+          .clip()
+          .opacity(0.58)
+          .image(topBanner, coverInset, coverInset, {
+            cover: [coverWidth, middleTop - coverInset],
+            align: "center",
+            valign: "center",
+          });
+      } catch {
+        // A corrupt image must not abort the entire catalogue download.
+      } finally {
+        doc.restore();
+      }
       doc.save()
         .opacity(0.18)
         .rect(coverInset, coverInset, coverWidth, middleTop - coverInset)
@@ -193,15 +198,20 @@ export class CatalogueService {
       // A tiny overlap prevents a rendering seam between the two images.
       const lowerTop = middleTop - 0.5;
       const lowerHeight = height - lowerTop - coverInset;
-      doc.save()
-        .rect(coverInset, lowerTop, coverWidth, lowerHeight)
-        .clip()
-        .image(stockImage, coverInset, lowerTop, {
-          cover: [coverWidth, lowerHeight],
-          align: "center",
-          valign: "center",
-        })
-        .restore();
+      doc.save();
+      try {
+        doc.rect(coverInset, lowerTop, coverWidth, lowerHeight)
+          .clip()
+          .image(stockImage, coverInset, lowerTop, {
+            cover: [coverWidth, lowerHeight],
+            align: "center",
+            valign: "center",
+          });
+      } catch {
+        // Keep generating the remaining pages when an upload is unreadable.
+      } finally {
+        doc.restore();
+      }
     } else {
       doc.fillColor("#666666").fontSize(11).text(
         "Upload stock image in Design CMS",
@@ -506,7 +516,35 @@ export class CatalogueService {
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     );
     const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-    return isPng || isJpeg ? buffer : null;
+    if (isPng) return buffer;
+    if (!isJpeg) return null;
+
+    // Some image exporters add an empty APP1/Exif marker (FF E1 00 02).
+    // Browsers accept it, but PDFKit's JPEG parser reads beyond the buffer and
+    // throws "Attempt to access memory outside buffer bounds". Removing only
+    // those empty markers preserves the JPEG pixels and makes it PDFKit-safe.
+    return this.stripEmptyJpegApp1Segments(buffer);
+  }
+
+  private stripEmptyJpegApp1Segments(buffer: Buffer) {
+    const parts: Buffer[] = [buffer.subarray(0, 2)];
+    let offset = 2;
+
+    while (offset + 4 <= buffer.length && buffer[offset] === 0xff) {
+      const marker = buffer[offset + 1];
+      if (marker === 0xda || marker === 0xd9) break;
+
+      const length = buffer.readUInt16BE(offset + 2);
+      if (length < 2 || offset + length + 2 > buffer.length) return buffer;
+
+      if (!(marker === 0xe1 && length === 2)) {
+        parts.push(buffer.subarray(offset, offset + length + 2));
+      }
+      offset += length + 2;
+    }
+
+    parts.push(buffer.subarray(offset));
+    return Buffer.concat(parts);
   }
 }
 
