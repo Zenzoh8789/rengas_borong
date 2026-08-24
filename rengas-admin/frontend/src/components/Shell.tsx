@@ -1,7 +1,12 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, Box, CheckCircle2, Cloud, Download, Eye, FileText, Image as ImageIcon, LogOut, PackagePlus, Palette, Pencil, Plus, RefreshCw, Save, Search, ShieldCheck, Trash2, Upload, Users, X, XCircle } from "lucide-react";
-import { API, request } from "../api/client";
-import type { Category, Customer, Product, Role, ToastState } from "../types";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  X,
+} from "lucide-react";
+import { request } from "../api/client";
+import type { Category, Customer, Role, ToastState } from "../types";
 import { Topbar } from "./Topbar";
 import { Products } from "./Products";
 import { Orders } from "./Orders";
@@ -22,100 +27,256 @@ export function Shell({
   loginToast: ToastState;
   onLoginToastShown: () => void;
 }) {
-  const [view, setView] = useState<"products" | "orders" | "customers">(
-    role === "ADMIN" ? "products" : "orders",
-  );
+  const [view, setView] = useState<
+    "products" | "orders" | "customers"
+  >(role === "ADMIN" ? "products" : "orders");
+
   const [modal, setModal] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [sideQuery, setSideQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(
+    null,
+  );
+
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () =>
+      typeof window === "undefined" ||
+      !window.matchMedia("(max-width: 900px)").matches,
+  );
+
   const [refresh, setRefresh] = useState(0);
   const [toast, setToast] = useState<ToastState>(loginToast);
   const [orderCustomers, setOrderCustomers] = useState<Customer[]>([]);
+
   useEffect(() => {
-    if (loginToast) onLoginToastShown();
+    if (loginToast) {
+      onLoginToastShown();
+    }
   }, [loginToast, onLoginToastShown]);
+
+  useEffect(() => {
+    const mobileQuery = window.matchMedia("(max-width: 900px)");
+
+    const handleBreakpointChange = (event: MediaQueryListEvent) => {
+      setSidebarOpen(!event.matches);
+    };
+
+    mobileQuery.addEventListener("change", handleBreakpointChange);
+
+    return () => {
+      mobileQuery.removeEventListener("change", handleBreakpointChange);
+    };
+  }, []);
+
   const loadCategories = () =>
     request("/categories")
       .then(setCategories)
       .catch(() =>
-        setToast({ type: "error", message: "Categories could not be loaded" }),
+        setToast({
+          type: "error",
+          message: "Categories could not be loaded",
+        }),
       );
+
   useEffect(() => {
-    if (role === "ADMIN") loadCategories();
-    else request("/customers").then(setOrderCustomers).catch(() => setOrderCustomers([]));
+    if (role === "ADMIN") {
+      loadCategories();
+    } else {
+      request("/customers")
+        .then(setOrderCustomers)
+        .catch(() => setOrderCustomers([]));
+    }
   }, [role, refresh]);
+
   const filteredCategories = useMemo(
     () =>
-      categories.filter((c) =>
-        c.name.toLowerCase().includes(sideQuery.trim().toLowerCase()),
+      categories.filter((category) =>
+        category.name
+          .toLowerCase()
+          .includes(sideQuery.trim().toLowerCase()),
       ),
     [categories, sideQuery],
   );
-  const visibleCustomers = useMemo(() => orderCustomers.filter(c => [c.name,c.phoneNumber,c.address].join(" ").toLowerCase().includes(sideQuery.toLowerCase())), [orderCustomers, sideQuery]);
+
+  const visibleCustomers = useMemo(
+    () =>
+      orderCustomers.filter((customer) =>
+        [
+          customer.name,
+          customer.phoneNumber,
+          customer.address,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(sideQuery.trim().toLowerCase()),
+      ),
+    [orderCustomers, sideQuery],
+  );
+
+  const closeSidebarOnMobile = () => {
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      setSidebarOpen(false);
+    }
+  };
+
+  const selectAll = () => {
+    setSelectedCategory(null);
+    closeSidebarOnMobile();
+  };
+
+  const selectCategory = (categoryId: number) => {
+    setSelectedCategory(categoryId);
+    closeSidebarOnMobile();
+  };
+
   return (
-    <div className="app">
-      <aside>
+    <div
+      className={`app ${
+        sidebarOpen ? "sidebar-expanded" : "sidebar-collapsed"
+      }`}
+    >
+      <aside
+        id="admin-sidebar"
+        className={`sidebar ${sidebarOpen ? "open" : "closed"}`}
+        aria-hidden={!sidebarOpen}
+      >
         <div className="brand">
           <img src="/logo.png" alt="Rengas logo" />
-          <div>
+
+          <div className="brand-text">
             <b>{role === "ADMIN" ? "RENGA BORONG" : "Order Admin"}</b>
+
             <small>
-              {role === "ADMIN" ? "Admin" : "Order Management Admin"}
+              {role === "ADMIN"
+                ? "Admin"
+                : "Order Management Admin"}
             </small>
           </div>
+
+          <button
+            type="button"
+            className="sidebar-close"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close sidebar"
+            title="Close sidebar"
+          >
+            <ChevronLeft aria-hidden="true" />
+          </button>
         </div>
+
         <label className="side-search">
-          <Search />
+          <Search aria-hidden="true" />
+
           <input
             value={sideQuery}
-            onChange={(e) => setSideQuery(e.target.value)}
-            placeholder={`Search ${role === "ADMIN" ? "category" : "customer"}...`}
+            onChange={(event) => setSideQuery(event.target.value)}
+            placeholder={`Search ${
+              role === "ADMIN" ? "category" : "customer"
+            }...`}
           />
+
           {sideQuery && (
-            <button onClick={() => setSideQuery("")} aria-label="Clear">
-              <X />
+            <button
+              type="button"
+              onClick={() => setSideQuery("")}
+              aria-label="Clear search"
+            >
+              <X aria-hidden="true" />
             </button>
           )}
         </label>
+
         <div className="side-title">
-          <b>{role === "ADMIN" ? "Categories" : "Customer Details"}</b>
+          <b>
+            {role === "ADMIN" ? "Categories" : "Customer Details"}
+          </b>
+
           <span>
-            {role === "ADMIN" ? categories.length : visibleCustomers.length}{" "}
+            {role === "ADMIN"
+              ? categories.length
+              : visibleCustomers.length}{" "}
             {role === "ADMIN" ? "categories" : ""}
           </span>
         </div>
+
         <button
-          className={`side-link ${selectedCategory === null ? "active" : ""}`}
-          onClick={() => setSelectedCategory(null)}
+          type="button"
+          className={`side-link ${
+            selectedCategory === null ? "active" : ""
+          }`}
+          onClick={selectAll}
         >
           {role === "ADMIN" ? "ALL PRODUCTS" : "All Customers"}
+
           <span>
             {role === "ADMIN"
-              ? categories.reduce((n, c) => n + (c.products?.length || 0), 0)
+              ? categories.reduce(
+                  (total, category) =>
+                    total + (category.products?.length || 0),
+                  0,
+                )
               : orderCustomers.length}
           </span>
         </button>
+
         {role === "ADMIN"
-          ? filteredCategories.map((c) => (
+          ? filteredCategories.map((category) => (
               <button
-                className={`side-link ${selectedCategory === c.id ? "active" : ""}`}
-                key={c.id}
-                onClick={() => setSelectedCategory(c.id)}
+                type="button"
+                className={`side-link ${
+                  selectedCategory === category.id ? "active" : ""
+                }`}
+                key={category.id}
+                onClick={() => selectCategory(category.id)}
               >
-                {c.name}
-                <span>{c.products?.length || 0}</span>
+                {category.name}
+
+                <span>{category.products?.length || 0}</span>
               </button>
             ))
           : visibleCustomers.map((customer) => (
-              <button className="side-link" key={customer.id}>
+              <button
+                type="button"
+                className="side-link"
+                key={customer.id}
+                onClick={closeSidebarOnMobile}
+              >
                 {customer.name}
+
                 <span>{customer.id}</span>
               </button>
             ))}
-        {(role === "ADMIN" ? filteredCategories : visibleCustomers).length ===
-          0 && <p className="side-empty">No matches found</p>}
+
+        {(role === "ADMIN"
+          ? filteredCategories
+          : visibleCustomers
+        ).length === 0 && (
+          <p className="side-empty">No matches found</p>
+        )}
       </aside>
+
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-label="Close sidebar"
+          tabIndex={-1}
+        />
+      )}
+
+      {!sidebarOpen && (
+        <button
+          type="button"
+          className="sidebar-open"
+          onClick={() => setSidebarOpen(true)}
+          aria-label="Open sidebar"
+          title="Open sidebar"
+        >
+          <ChevronRight aria-hidden="true" />
+        </button>
+      )}
+
       <main className="content">
         <Topbar
           role={role}
@@ -123,9 +284,10 @@ export function Shell({
           setView={setView}
           setModal={setModal}
           onLogout={onLogout}
-          onImported={() => setRefresh((v) => v + 1)}
+          onImported={() => setRefresh((value) => value + 1)}
           setToast={setToast}
         />
+
         {role === "ADMIN" ? (
           <Products
             selectedCategory={selectedCategory}
@@ -135,33 +297,48 @@ export function Shell({
             setToast={setToast}
           />
         ) : (
-          <Orders view={view as "orders" | "customers"} setModal={setModal} setToast={setToast} />
+          <Orders
+            view={view as "orders" | "customers"}
+            setModal={setModal}
+            setToast={setToast}
+          />
         )}
       </main>
+
       {modal === "product" && (
         <ProductModal
           categories={categories}
           close={() => setModal(null)}
           onChanged={() => {
             setSelectedCategory(null);
-            setRefresh((v) => v + 1);
+            setRefresh((value) => value + 1);
           }}
           setToast={setToast}
         />
-      )}{" "}
+      )}
+
       {modal === "catalogue" && (
         <Catalogue
           categories={categories}
           close={() => setModal(null)}
           setToast={setToast}
         />
-      )}{" "}
-      {modal === "design" && (
-        <Design close={() => setModal(null)} setToast={setToast} />
-      )}{" "}
-      {modal === "customer" && (
-        <CustomerModal close={() => setModal(null)} setToast={setToast} />
       )}
+
+      {modal === "design" && (
+        <Design
+          close={() => setModal(null)}
+          setToast={setToast}
+        />
+      )}
+
+      {modal === "customer" && (
+        <CustomerModal
+          close={() => setModal(null)}
+          setToast={setToast}
+        />
+      )}
+
       <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );

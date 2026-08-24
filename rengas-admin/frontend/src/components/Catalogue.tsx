@@ -4,7 +4,9 @@ import { CalendarDays, FileText, RefreshCw, Search } from "lucide-react";
 import { API } from "../api/client";
 import type { Category, ToastState } from "../types";
 import { Modal } from "./Modal";
-
+import {
+  getDisabledCatalogueProductIds,
+} from "../utils/catalogueProductStatus";
 type DateFieldProps = {
   label: string;
   value: string;
@@ -132,66 +134,106 @@ export function Catalogue({
     );
   }
 
-  async function generateCatalogue() {
-    if (!title.trim() || !from || !to || !selected.length) {
-      setToast({
-        type: "error",
-        message: "Enter a title, valid date range and select categories",
-      });
-      return;
-    }
-    if (from > to) {
-      setToast({ type: "error", message: "From date must be before To date" });
-      return;
-    }
+async function generateCatalogue() {
+  if (
+    !title.trim() ||
+    !from ||
+    !to ||
+    !selected.length
+  ) {
+    setToast({
+      type: "error",
+      message:
+        "Enter a title, valid date range and select categories",
+    });
 
-    setGenerating(true);
-    try {
-      const response = await fetch(`${API}/catalogues/generate`, {
+    return;
+  }
+
+  if (from > to) {
+    setToast({
+      type: "error",
+      message:
+        "From date must be before To date",
+    });
+
+    return;
+  }
+
+  setGenerating(true);
+
+  try {
+    const response = await fetch(
+      `${API}/catalogues/generate`,
+      {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           title: title.trim(),
           from,
           to,
-          categoryIds: selected,
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(
-          (await response.text()) || "Catalogue generation failed",
-        );
-      }
 
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${
-        title.trim().replace(/[^a-zA-Z0-9_-]+/g, "-") || "catalogue"
-      }.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      setToast({
-        type: "success",
-        message: `Catalogue "${title.trim()}" downloaded successfully`,
-      });
-      close();
-    } catch (error) {
-      setToast({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Catalogue generation failed",
-      });
-    } finally {
-      setGenerating(false);
+          // Use the existing state variable
+          categoryIds: selected,
+
+          // OFF product IDs
+          excludedProductIds:
+            getDisabledCatalogueProductIds(),
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        (await response.text()) ||
+          "Catalogue generation failed",
+      );
     }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link =
+      document.createElement("a");
+
+    link.href = url;
+    link.download = `${
+      title
+        .trim()
+        .replace(
+          /[^a-zA-Z0-9_-]+/g,
+          "-",
+        ) || "catalogue"
+    }.pdf`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 1000);
+
+    setToast({
+      type: "success",
+      message: `Catalogue "${title.trim()}" downloaded successfully`,
+    });
+
+    close();
+  } catch (error) {
+    setToast({
+      type: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Catalogue generation failed",
+    });
+  } finally {
+    setGenerating(false);
   }
+}
 
   return (
     <Modal
