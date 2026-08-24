@@ -11,10 +11,9 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
-  app.useStaticAssets(join(process.cwd(), "uploads"), {
+  app.useStaticAssets(join(__dirname, "..", "uploads"), {
     prefix: "/uploads/",
   });
-
   app.useStaticAssets(join(process.cwd(), "dist", "public"));
 
   app.setGlobalPrefix("api");
