@@ -53,6 +53,7 @@ export class CrudService {
       order: { name: "ASC" },
     });
   }
+  
   async notify(
     title: string,
     message: string,
@@ -103,6 +104,7 @@ export class CrudService {
     uom: String(body.uom || "PKT"),
     price: Number(body.price || 0),
     imageUrl: body.imageUrl || null,
+    catalogueEnabled: true,
   });
 
   const saved: Product = await this.products.save(product);
@@ -332,6 +334,26 @@ export class CrudService {
     }
 
     return images;
+  }
+
+  
+
+  async updateCatalogueStatus(
+    id: number,
+    enabled: boolean,
+  ): Promise<Product> {
+    const product = await this.products.findOneByOrFail({ id });
+    product.catalogueEnabled = enabled;
+    const saved = await this.products.save(product);
+
+    await this.notify(
+      enabled
+        ? "Product enabled for catalogue"
+        : "Product disabled for catalogue",
+      `${saved.code} · ${saved.description}`,
+    );
+
+    return saved;
   }
 
   async updateProduct(id: number, body: any): Promise<Product> {
@@ -602,6 +624,17 @@ export class CrudController {
     }
     return this.s.bulkUploadProducts(spreadsheet, imagesZip);
   }
+  @Patch("products/:id/catalogue-status")
+  updateCatalogueStatus(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() body: { enabled: boolean },
+  ) {
+    if (typeof body.enabled !== "boolean") {
+      throw new BadRequestException("enabled must be true or false");
+    }
+    return this.s.updateCatalogueStatus(id, body.enabled);
+  }
+
   @Patch("products/:id") editProduct(
     @Param("id", ParseIntPipe) id: number,
     @Body() b: any,

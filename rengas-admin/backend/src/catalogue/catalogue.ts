@@ -13,7 +13,7 @@ import { join } from "node:path";
 import PDFDocument = require("pdfkit");
 import QRCode = require("qrcode");
 import * as sharpModule from "sharp";
-import { In, Not, Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import { Category, DesignSetting, Product } from "../entities";
 
 type GenerateCatalogueDto = {
@@ -21,7 +21,6 @@ type GenerateCatalogueDto = {
   from: string;
   to: string;
   categoryIds: number[];
-  excludedProductIds?: number[];
 };
 
 const sharpFactory = (
@@ -77,14 +76,12 @@ export class CatalogueService {
       where: { id: In(categoryIds) },
       order: { name: "ASC" },
     });
-    const excludedProductIds =
-      Array.isArray(input.excludedProductIds)
-        ? [...new Set(input.excludedProductIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
-        : [];
+    const enabledProductsWhere = {
+      category: { id: In(categoryIds) },
+      catalogueEnabled: true,
+    };
 
-    const allProductsWhere: any = { category: { id: In(categoryIds) } };
-    if (excludedProductIds.length) allProductsWhere.id = Not(In(excludedProductIds));
-    if (!(await this.products.count({ where: allProductsWhere }))) {
+    if (!(await this.products.count({ where: enabledProductsWhere }))) {
       throw new BadRequestException("No enabled products are available for the selected categories");
     }
 
@@ -139,10 +136,11 @@ export class CatalogueService {
     for (const category of categories) {
       let offset = 0;
       while (true) {
-        const categoryWhere: any = { category: { id: category.id } };
-        if (excludedProductIds.length) categoryWhere.id = Not(In(excludedProductIds));
         const categoryProducts = await this.products.find({
-          where: categoryWhere,
+          where: {
+            category: { id: category.id },
+            catalogueEnabled: true,
+          },
           relations: { category: true },
           order: { description: "ASC", id: "ASC" },
           skip: offset,

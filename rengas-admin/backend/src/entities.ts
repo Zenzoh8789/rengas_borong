@@ -30,16 +30,52 @@ export class Category {
 }
 @Entity("products")
 export class Product {
-  @PrimaryGeneratedColumn() id: number;
-  @Column({ unique: true }) code: string;
-  @Column() description: string;
-  @ManyToOne(() => Category, (c) => c.products, { eager: true })
-  @JoinColumn({ name: "category_id" })
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column({
+    unique: true,
+  })
+  code: string;
+
+  @Column()
+  description: string;
+
+  @ManyToOne(() => Category, (category) => category.products, {
+    eager: true,
+  })
+  @JoinColumn({
+    name: "category_id",
+  })
   category: Category;
-  @Column() uom: string;
-  @Column("decimal", { precision: 12, scale: 2 }) price: number;
-  @Column({ name: "image_url", length: 1000, nullable: true }) imageUrl: string;
-  @CreateDateColumn({ name: "created_at" }) createdAt: Date;
+
+  @Column()
+  uom: string;
+
+  @Column("decimal", {
+    precision: 12,
+    scale: 2,
+  })
+  price: number;
+
+  @Column({
+    name: "image_url",
+    length: 1000,
+    nullable: true,
+  })
+  imageUrl: string | null;
+
+  @Column({
+    name: "catalogue_enabled",
+    type: "boolean",
+    default: true,
+  })
+  catalogueEnabled: boolean;
+
+  @CreateDateColumn({
+    name: "created_at",
+  })
+  createdAt: Date;
 }
 @Entity("customers")
 export class Customer {
@@ -59,7 +95,7 @@ export class Customer {
     nullable: true,
   })
   companyName?: string;
-  
+
   @Column({
     name: "tin_number",
     type: "varchar",
@@ -67,14 +103,14 @@ export class Customer {
     nullable: true,
   })
   tinNumber?: string;
-  
+
   @Column({
     type: "varchar",
     length: 500,
     nullable: true,
   })
   address?: string;
-  
+
   @Column({
     name: "phone_number",
     type: "varchar",

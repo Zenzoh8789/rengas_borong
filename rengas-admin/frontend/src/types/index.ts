@@ -8,6 +8,7 @@ export type Product = {
   price: number;
   category: Category;
   imageUrl?: string;
+  catalogueEnabled: boolean;
 };
 export type Customer = {
   id: number;

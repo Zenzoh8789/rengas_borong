@@ -4,9 +4,6 @@ import { CalendarDays, FileText, RefreshCw, Search } from "lucide-react";
 import { API } from "../api/client";
 import type { Category, ToastState } from "../types";
 import { Modal } from "./Modal";
-import {
-  getDisabledCatalogueProductIds,
-} from "../utils/catalogueProductStatus";
 type DateFieldProps = {
   label: string;
   value: string;
@@ -178,10 +175,6 @@ async function generateCatalogue() {
 
           // Use the existing state variable
           categoryIds: selected,
-
-          // OFF product IDs
-          excludedProductIds:
-            getDisabledCatalogueProductIds(),
         }),
       },
     );

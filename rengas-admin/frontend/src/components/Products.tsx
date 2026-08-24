@@ -10,10 +10,6 @@ import {
 } from "lucide-react";
 import { request } from "../api/client";
 import type { Product } from "../types";
-import {
-  getDisabledCatalogueProductIds,
-  setProductCatalogueStatus,
-} from "../utils/catalogueProductStatus";
 import { ProductView } from "./ProductView";
 import { EditProduct } from "./EditProduct";
 
@@ -72,13 +68,6 @@ export function Products({
   const [viewing, setViewing] = useState<Product | null>(null);
   const [editing, setEditing] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const [
-    disabledCatalogueProducts,
-    setDisabledCatalogueProducts,
-  ] = useState<Set<number>>(
-    () => new Set(getDisabledCatalogueProductIds()),
-  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -190,14 +179,6 @@ export function Products({
         method: "DELETE",
       });
 
-      setProductCatalogueStatus(id, true);
-
-      setDisabledCatalogueProducts((current) => {
-        const next = new Set(current);
-        next.delete(id);
-        return next;
-      });
-
       setToast({
         type: "success",
         message: "Product deleted successfully",
@@ -212,19 +193,23 @@ export function Products({
     }
   }
 
-  function toggleCatalogueStatus(productId: number) {
-    setDisabledCatalogueProducts((current) => {
-      const next = new Set(current);
-      const currentlyEnabled = !next.has(productId);
-      const nextEnabled = !currentlyEnabled;
+  async function toggleCatalogueStatus(product: Product) {
+    const currentEnabled = product.catalogueEnabled !== false;
+    const nextEnabled = !currentEnabled;
 
-      if (nextEnabled) {
-        next.delete(productId);
-      } else {
-        next.add(productId);
-      }
+    setItems((current) =>
+      current.map((item) =>
+        item.id === product.id
+          ? { ...item, catalogueEnabled: nextEnabled }
+          : item,
+      ),
+    );
 
-      setProductCatalogueStatus(productId, nextEnabled);
+    try {
+      await request(`/products/${product.id}/catalogue-status`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: nextEnabled }),
+      });
 
       setToast({
         type: "success",
@@ -232,9 +217,20 @@ export function Products({
           ? "Product included in catalogue"
           : "Product excluded from catalogue",
       });
+    } catch {
+      setItems((current) =>
+        current.map((item) =>
+          item.id === product.id
+            ? { ...item, catalogueEnabled: currentEnabled }
+            : item,
+        ),
+      );
 
-      return next;
-    });
+      setToast({
+        type: "error",
+        message: "Catalogue status could not be saved",
+      });
+    }
   }
 
   return (
@@ -299,7 +295,7 @@ export function Products({
         ) : shown.length ? (
           paginatedProducts.map((product, index) => {
             const catalogueEnabled =
-              !disabledCatalogueProducts.has(product.id);
+              product.catalogueEnabled !== false;
 
             return (
               <div
@@ -395,9 +391,7 @@ export function Products({
                         ? "Included in catalogue"
                         : "Excluded from catalogue"
                     }
-                    onClick={() =>
-                      toggleCatalogueStatus(product.id)
-                    }
+                    onClick={() => toggleCatalogueStatus(product)}
                   >
                     <span
                       className="toggle-track"
