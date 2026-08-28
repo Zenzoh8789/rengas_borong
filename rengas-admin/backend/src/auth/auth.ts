@@ -358,7 +358,12 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const token = request.cookies?.access_token;
+    // Customer and admin sites can share a cookie on localhost. Prefer the
+    // explicit token sent by the customer app; never fall back if it is invalid.
+    const authorization = request.headers.authorization;
+    const token = authorization !== undefined
+      ? /^Bearer\s+(\S+)$/i.exec(authorization)?.[1]
+      : request.cookies?.access_token;
     if (!token) return { authenticated: false, role: null };
 
     try {
@@ -374,7 +379,7 @@ export class AuthController {
         customer,
       };
     } catch {
-      this.clearAccessCookie(response);
+      if (authorization === undefined) this.clearAccessCookie(response);
       return { authenticated: false, role: null };
     }
   }
