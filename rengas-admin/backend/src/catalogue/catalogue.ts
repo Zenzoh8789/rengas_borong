@@ -2,8 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Injectable,
   Post,
+  Query,
   Res,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -15,6 +17,7 @@ import QRCode = require("qrcode");
 import * as sharpModule from "sharp";
 import { In, Repository } from "typeorm";
 import { Category, DesignSetting, Product } from "../entities";
+import { getUploadDirectory } from "../storage";
 
 type GenerateCatalogueDto = {
   title: string;
@@ -52,6 +55,7 @@ const COMPANY_URL = "https://www.rengas.my";
 
 @Injectable()
 export class CatalogueService {
+  private readonly imageCache = new Map<string, Promise<Buffer | null>>();
   
   constructor(
     @InjectRepository(Product) private products: Repository<Product>,
@@ -81,8 +85,22 @@ export class CatalogueService {
       catalogueEnabled: true,
     };
 
-    if (!(await this.products.count({ where: enabledProductsWhere }))) {
+    // Load selected products once. The old implementation executed one SQL
+    // query for every nine products (hundreds of queries for a full catalogue).
+    const selectedProducts = await this.products.find({
+      where: enabledProductsWhere,
+      relations: { category: true },
+      order: { category: { name: "ASC" }, description: "ASC", id: "ASC" },
+    });
+    if (!selectedProducts.length) {
       throw new BadRequestException("No enabled products are available for the selected categories");
+    }
+    const productsByCategory = new Map<number, Product[]>();
+    for (const product of selectedProducts) {
+      const categoryId = product.category.id;
+      const group = productsByCategory.get(categoryId) || [];
+      group.push(product);
+      productsByCategory.set(categoryId, group);
     }
 
     const design = await this.designs.findOneBy({ id: 1 });
@@ -134,23 +152,13 @@ export class CatalogueService {
     let cataloguePage = 1;
 
     for (const category of categories) {
-      let offset = 0;
-      while (true) {
-        const categoryProducts = await this.products.find({
-          where: {
-            category: { id: category.id },
-            catalogueEnabled: true,
-          },
-          relations: { category: true },
-          order: { description: "ASC", id: "ASC" },
-          skip: offset,
-          take: 9,
-        });
-        if (!categoryProducts.length) break;
+      const products = productsByCategory.get(category.id) || [];
+      for (let offset = 0; offset < products.length; offset += 9) {
+        const categoryProducts = products.slice(offset, offset + 9);
         const imageResults = await Promise.all(
           categoryProducts.map(async (product) => ({
             id: product.id,
-            image: await this.imageBuffer(product.imageUrl, 360, 320, 58),
+            image: await this.imageBuffer(product.imageUrl, 240, 210, 45),
           })),
         );
         const productImages = new Map<number, Buffer | null>(
@@ -168,8 +176,6 @@ export class CatalogueService {
           grayscaleLogo,
         );
         cataloguePage += 1;
-        offset += categoryProducts.length;
-        if (categoryProducts.length < 9) break;
       }
     }
 
@@ -708,6 +714,7 @@ private readUploadedFile(
     }
 
     const possiblePaths = [
+      join(getUploadDirectory(), cleanPath),
       join(
         process.cwd(),
         "uploads",
@@ -754,17 +761,7 @@ private readUploadedFile(
     ];
 
     for (const path of possiblePaths) {
-      console.log(
-        "Checking image path:",
-        path,
-      );
-
       if (existsSync(path)) {
-        console.log(
-          "Found image file:",
-          path,
-        );
-
         return readFileSync(path);
       }
     }
@@ -785,7 +782,25 @@ private readUploadedFile(
     return null;
   }
 }
- private async imageBuffer(
+ private imageBuffer(
+  url?: string | null,
+  maxWidth = 480,
+  maxHeight = 420,
+  quality = 72,
+): Promise<Buffer | null> {
+  const key = `${url || ""}|${maxWidth}|${maxHeight}|${quality}`;
+  const cached = this.imageCache.get(key);
+  if (cached) return cached;
+  const pending = this.loadImageBuffer(url, maxWidth, maxHeight, quality);
+  this.imageCache.set(key, pending);
+  if (this.imageCache.size > 500) {
+    const oldest = this.imageCache.keys().next().value;
+    if (oldest) this.imageCache.delete(oldest);
+  }
+  return pending;
+ }
+
+ private async loadImageBuffer(
   url?: string | null,
   maxWidth = 480,
   maxHeight = 420,
@@ -804,11 +819,6 @@ private readUploadedFile(
   try {
     let buffer: Buffer | null =
       null;
-
-    console.log(
-      "Loading catalogue image:",
-      value,
-    );
 
     /*
      * Base64 image support.
@@ -883,13 +893,8 @@ private readUploadedFile(
               backendBaseUrl,
             ).toString();
 
-      console.log(
-        "Fetching catalogue image:",
-        fetchUrl,
-      );
-
       const response =
-        await fetch(fetchUrl);
+        await fetch(fetchUrl, { signal: AbortSignal.timeout(8000) });
 
       if (!response.ok) {
         console.error(
@@ -1022,6 +1027,34 @@ export class CatalogueController {
       await this.catalogue.generate(input, response);
     } catch (error) {
       console.error("Catalogue generation failed:", error);
+      if (response.headersSent) {
+        response.destroy(error instanceof Error ? error : undefined);
+        return;
+      }
+      const statusCode = error instanceof BadRequestException ? 400 : 500;
+      response.status(statusCode).json({
+        statusCode,
+        message: error instanceof Error ? error.message : "Catalogue generation failed",
+      });
+    }
+  }
+
+  @Get("download")
+  async download(
+    @Query("title") title: string,
+    @Query("from") from: string,
+    @Query("to") to: string,
+    @Query("categoryIds") rawCategoryIds: string,
+    @Res() response: Response,
+  ) {
+    const categoryIds = String(rawCategoryIds || "")
+      .split(",")
+      .map(Number)
+      .filter((id) => Number.isInteger(id) && id > 0);
+    try {
+      await this.catalogue.generate({ title, from, to, categoryIds }, response);
+    } catch (error) {
+      console.error("Catalogue download failed:", error);
       if (response.headersSent) {
         response.destroy(error instanceof Error ? error : undefined);
         return;

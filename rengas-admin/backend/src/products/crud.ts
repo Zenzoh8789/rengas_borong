@@ -35,6 +35,7 @@ import {
   Product,
   User,
 } from "../entities";
+import { getUploadDirectory } from "../storage";
 
 @Injectable()
 export class CrudService {
@@ -129,7 +130,7 @@ export class CrudService {
     }
 
     const images = this.readProductImages(imagesZip);
-    const uploadDirectory = join(process.cwd(), "uploads", "products");
+    const uploadDirectory = join(getUploadDirectory(), "products");
     await mkdir(uploadDirectory, { recursive: true });
 
     const workbook = XLSX.read(file.buffer, { type: "buffer" });

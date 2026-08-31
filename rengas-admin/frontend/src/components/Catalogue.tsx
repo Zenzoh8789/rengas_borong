@@ -160,58 +160,25 @@ async function generateCatalogue() {
   setGenerating(true);
 
   try {
-    const response = await fetch(
-      `${API}/catalogues/generate`,
-      {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: title.trim(),
-          from,
-          to,
-
-          // Use the existing state variable
-          categoryIds: selected,
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        (await response.text()) ||
-          "Catalogue generation failed",
-      );
-    }
-
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link =
-      document.createElement("a");
-
-    link.href = url;
-    link.download = `${
-      title
-        .trim()
-        .replace(
-          /[^a-zA-Z0-9_-]+/g,
-          "-",
-        ) || "catalogue"
-    }.pdf`;
-
+    // Let the browser receive the PDF stream directly. The previous fetch +
+    // Blob flow waited for the entire (potentially hundreds-page) PDF and kept
+    // a second full copy in browser memory before showing the download.
+    const params = new URLSearchParams({
+      title: title.trim(),
+      from,
+      to,
+      categoryIds: selected.join(","),
+    });
+    const link = document.createElement("a");
+    link.href = `${API}/catalogues/download?${params.toString()}`;
+    link.style.display = "none";
     document.body.appendChild(link);
     link.click();
     link.remove();
 
-    window.setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 1000);
-
     setToast({
       type: "success",
-      message: `Catalogue "${title.trim()}" downloaded successfully`,
+      message: `Catalogue "${title.trim()}" download started`,
     });
 
     close();

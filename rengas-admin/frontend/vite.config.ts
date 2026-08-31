@@ -5,7 +5,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "");
 
   const backendUrl =
-    env.VITE_BACKEND_URL || "http://127.0.0.1:3002";
+    env.VITE_BACKEND_URL || "http://127.0.0.1:3000";
+
+  console.log(`[vite] backend proxy: ${backendUrl}`);
 
   return {
     plugins: [react()],

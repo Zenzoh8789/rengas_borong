@@ -4,6 +4,7 @@ import { NestExpressApplication } from "@nestjs/platform-express";
 import cookieParser = require("cookie-parser");
 import { join } from "path";
 import { AppModule } from "./app.module";
+import { getUploadDirectory } from "./storage";
 
 async function bootstrap() {
   const app =
@@ -11,8 +12,10 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
-  app.useStaticAssets(join(__dirname, "..", "uploads"), {
+  app.useStaticAssets(getUploadDirectory(), {
     prefix: "/uploads/",
+    maxAge: "30d",
+    immutable: true,
   });
   app.useStaticAssets(join(process.cwd(), "dist", "public"));
 
@@ -41,7 +44,7 @@ async function bootstrap() {
     }),
   );
 
-  const port = Number(process.env.PORT || 3002);
+  const port = Number(process.env.PORT || 3000);
 
   await app.listen(port);
 

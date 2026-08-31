@@ -40,6 +40,11 @@ pm2 restart rengas-backend --update-env
 Serve `frontend/dist` through Nginx and proxy `/api` plus `/uploads` to
 `http://127.0.0.1:3000`.
 
+For production uploads, set `UPLOAD_DIR` to a persistent directory outside
+`dist`, for example `/var/www/rengas-admin/shared/uploads`. The same directory
+must be used by the application and the Nginx `/uploads/` alias. See
+`UPDATED_CHANGES.md` for the complete configuration and migration steps.
+
 ## Responsive validation widths
 
 Test the browser at 360, 390, 480, 768, 820, 1024, 1280, 1440, and 1920 pixels.
