@@ -17,6 +17,7 @@ async function bootstrap() {
     maxAge: "30d",
     immutable: true,
   });
+
   app.useStaticAssets(join(process.cwd(), "dist", "public"));
 
   app.setGlobalPrefix("api");
@@ -44,11 +45,14 @@ async function bootstrap() {
     }),
   );
 
-  const port = Number(process.env.PORT || 3000);
+  const port = Number(process.env.PORT) || 3000;
 
-  await app.listen(port);
+  await app.listen(port, "0.0.0.0");
 
-  console.log(`RENGAS API running on http://localhost:${port}`);
+  console.log(`RENGAS API running on port ${port}`);
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  console.error("Failed to start RENGAS API:", error);
+  process.exit(1);
+});

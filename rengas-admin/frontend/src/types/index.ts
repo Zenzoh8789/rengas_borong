@@ -1,5 +1,11 @@
 export type Role = "ADMIN" | "ORDER_ADMIN";
-export type Category = { id: number; name: string; products?: unknown[] };
+
+export type Category = {
+  id: number;
+  name: string;
+  products?: unknown[];
+};
+
 export type Product = {
   id: number;
   code: string;
@@ -10,6 +16,7 @@ export type Product = {
   imageUrl?: string;
   catalogueEnabled: boolean;
 };
+
 export type Customer = {
   id: number;
   name: string;
@@ -19,12 +26,14 @@ export type Customer = {
   phoneNumber: string;
   whatsappNumber: string;
 };
+
 export type OrderItem = {
   id: number;
   quantity: number;
   unitPrice: number;
   product: Product;
 };
+
 export type Order = {
   id: number;
   orderNo: string;
@@ -33,4 +42,8 @@ export type Order = {
   status: "VIEW" | "MODIFIED" | "PRINTED";
   items: OrderItem[];
 };
-export type ToastState = { type: "success" | "error"; message: string } | null;
+
+export type ToastState = {
+  type: "success" | "error";
+  message: string;
+} | null;
