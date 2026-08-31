@@ -1,9 +1,28 @@
+import { existsSync, mkdirSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 
-/** One directory shared by upload, PDF generation and static serving. */
+/**
+ * One directory shared by uploads, PDF generation,
+ * and static-file serving.
+ */
 export function getUploadDirectory(): string {
   const configured = process.env.UPLOAD_DIR?.trim();
-  if (!configured) return join(process.cwd(), "uploads");
-  return isAbsolute(configured) ? configured : resolve(process.cwd(), configured);
-}
 
+  const uploadDirectory = configured
+    ? isAbsolute(configured)
+      ? configured
+      : resolve(process.cwd(), configured)
+    : join(process.cwd(), "uploads");
+
+  if (!existsSync(uploadDirectory)) {
+    mkdirSync(uploadDirectory, { recursive: true });
+  }
+
+  const productsDirectory = join(uploadDirectory, "products");
+
+  if (!existsSync(productsDirectory)) {
+    mkdirSync(productsDirectory, { recursive: true });
+  }
+
+  return uploadDirectory;
+}
