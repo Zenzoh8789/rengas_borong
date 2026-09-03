@@ -3,6 +3,8 @@ import { ConfigModule } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { AuthController, AuthService } from "./auth/auth";
+import { AdminAuthGuard } from "./auth/admin-auth.guard";
+import { CustomerAuthGuard } from "./auth/customer-auth.guard";
 import { CrudController, CrudService } from "./products/crud";
 import {
   Category,
@@ -18,17 +20,23 @@ import { UploadsController } from "./uploads/uploads";
 import { FeaturesController, FeaturesService } from "./features/features";
 import { CatalogueController, CatalogueService } from "./catalogue/catalogue";
 import { StoreController, StoreService } from "./store/store";
+import { validateEnvironment } from "./config/env.validation";
+import { getEnvironmentFilePaths } from "./config/env.paths";
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true,  envFilePath: ".env",}),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: getEnvironmentFilePaths(),
+      validate: validateEnvironment,
+    }),
     TypeOrmModule.forRoot({
       type: "mysql",
-      host: process.env.DB_HOST || "localhost",
-      port: +(process.env.DB_PORT || 3307),
-      username: process.env.DB_USER || "root",
-      password: process.env.DB_PASSWORD || "root",
-      database: process.env.DB_NAME || "rengas_admin",
+      host: process.env.DB_HOST as string,
+      port: Number(process.env.DB_PORT),
+      username: process.env.DB_USER as string,
+      password: process.env.DB_PASSWORD as string,
+      database: process.env.DB_NAME as string,
       entities: [
         User,
         Category,
@@ -53,7 +61,7 @@ import { StoreController, StoreService } from "./store/store";
     ]),
     JwtModule.register({
       global: true,
-      secret: process.env.JWT_SECRET || "dev-secret",
+      secret: process.env.JWT_SECRET as string,
       signOptions: { expiresIn: "8h" },
     }),
   ],
@@ -71,6 +79,8 @@ import { StoreController, StoreService } from "./store/store";
     FeaturesService,
     CatalogueService,
     StoreService,
+    AdminAuthGuard,
+    CustomerAuthGuard,
   ],
 })
 export class AppModule {}

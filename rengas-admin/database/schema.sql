@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS orders (
   order_date DATE NOT NULL,
   status ENUM('VIEW','MODIFIED','PRINTED') DEFAULT 'VIEW',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_orders_order_date (order_date),
+  INDEX idx_orders_customer_date (customer_id, order_date),
   FOREIGN KEY (customer_id) REFERENCES customers(id)
 );
 CREATE TABLE IF NOT EXISTS order_items (

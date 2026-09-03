@@ -123,9 +123,10 @@ export class Customer {
 }
 
 export enum OrderStatus {
-  VIEW = "VIEW",
-  MODIFIED = "MODIFIED",
-  PRINTED = "PRINTED",
+  ACCEPTED = "ACCEPTED",
+  PACKED = "PACKED",
+  SHIPPED = "SHIPPED",
+  DELIVERED = "DELIVERED",
 }
 
 @Entity("orders")
@@ -143,7 +144,7 @@ export class Order {
   @Column({ name: "order_date", type: "date" })
   orderDate: string;
 
-  @Column({ type: "enum", enum: OrderStatus, default: OrderStatus.VIEW })
+  @Column({ type: "enum", enum: OrderStatus, default: OrderStatus.ACCEPTED })
   status: OrderStatus;
 
   @OneToMany(() => OrderItem, (item) => item.order, { eager: true, cascade: true })

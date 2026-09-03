@@ -4,11 +4,32 @@
 
 1. Install Node.js 20 or newer and MySQL 8.
 2. Copy `backend/.env.example` to `backend/.env` and set real secrets.
+   `JWT_SECRET` must be at least 32 random characters. Default values such as
+   `root`, `password`, `dev-secret`, and the example placeholders are rejected.
+   To start the optional local MySQL container with those values, run
+   `docker compose --env-file backend/.env up -d mysql`.
+
+The application checks environment files in this order:
+
+1. `ENV_FILE`, when explicitly set (absolute or relative to the working directory).
+2. `backend/.env`, used by root `npm start` and PM2 deployments.
+3. `.env`, used by backend-only commands started inside `backend`.
+
+Existing operating-system environment variables take precedence over file values.
 3. Install dependencies:
 
 ```sh
 npm run install:all
 ```
+
+For an existing database created before Step 10, apply the idempotent performance
+indexes once (back up the database first):
+
+```sh
+mysql -u YOUR_DB_USER -p YOUR_DB_NAME < database/step10-performance-indexes.sql
+```
+
+New databases created from `database/schema.sql` already include these indexes.
 
 4. Start frontend and backend together:
 
@@ -36,6 +57,11 @@ From the project directory:
 npm run build
 pm2 restart rengas-backend --update-env
 ```
+
+The HTTP port opens only after Nest and MySQL initialize successfully. Configure
+the process manager or hosting platform startup grace period to allow database
+connection retries; a closed port during initialization means the service is not
+ready and must not receive traffic.
 
 Serve `frontend/dist` through Nginx and proxy `/api` plus `/uploads` to
 `http://127.0.0.1:3000`.

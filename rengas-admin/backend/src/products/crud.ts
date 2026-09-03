@@ -12,6 +12,7 @@ import {
   Post,
   Query,
   UploadedFiles,
+  UseGuards,
   UseInterceptors,
   StreamableFile,
 } from "@nestjs/common";
@@ -21,8 +22,6 @@ import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { mkdir, writeFile } from "node:fs/promises";
 import { extname, join, parse } from "node:path";
-import AdmZip = require("adm-zip");
-import * as XLSX from "xlsx";
 import {
   Category,
   Customer,
@@ -33,9 +32,30 @@ import {
   OrderItem,
   OrderStatus,
   Product,
+  Role,
   User,
 } from "../entities";
 import { getUploadDirectory } from "../storage";
+import { AdminAuthGuard } from "../auth/admin-auth.guard";
+import { Roles } from "../auth/roles.decorator";
+import {
+  MAX_IMAGE_BYTES,
+  MAX_SPREADSHEET_BYTES,
+  MAX_ZIP_BYTES,
+  validateImageBuffer,
+  validateSpreadsheetUpload,
+  validateZipUpload,
+} from "../uploads/upload-validation";
+import { readImageZip } from "../uploads/safe-zip";
+import { readSpreadsheetRows, writeRowsToXlsx } from "../uploads/spreadsheet";
+import {
+  CatalogueStatusDto,
+  CreateCategoryDto,
+  CreateCustomerDto,
+  ProductDto,
+  UpdateCustomerDto,
+  UpdateOrderDto,
+} from "./dtos";
 
 @Injectable()
 export class CrudService {
@@ -93,7 +113,7 @@ export class CrudService {
       order: { createdAt: "DESC" },
     });
   }
-  async addProduct(body: any): Promise<Product> {
+  async addProduct(body: ProductDto): Promise<Product> {
   const category = await this.categories.findOneByOrFail({
     id: Number(body.categoryId),
   });
@@ -118,24 +138,13 @@ export class CrudService {
   return saved;
 }
   async bulkUploadProducts(file: any, imagesZip?: any) {
-    if (!file?.buffer) {
-      throw new BadRequestException(
-        "Please select a valid Excel or CSV file",
-      );
-    }
-
-    const spreadsheetExtension = extname(file.originalname || "").toLowerCase();
-    if (![".csv", ".xls", ".xlsx"].includes(spreadsheetExtension)) {
-      throw new BadRequestException("Only CSV, XLS, and XLSX files are supported");
-    }
-
-    const images = this.readProductImages(imagesZip);
+    validateSpreadsheetUpload(file);
+    validateZipUpload(imagesZip);
+    const images = await this.readProductImages(imagesZip);
     const uploadDirectory = join(getUploadDirectory(), "products");
     await mkdir(uploadDirectory, { recursive: true });
 
-    const workbook = XLSX.read(file.buffer, { type: "buffer" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+    const rows = await readSpreadsheetRows(file);
 
     let created = 0;
     let updated = 0;
@@ -292,42 +301,22 @@ export class CrudService {
     };
   }
 
-  private readProductImages(imagesZip?: any) {
+  private async readProductImages(imagesZip?: Express.Multer.File) {
     const images = new Map<
       string,
       { data: Buffer; extension: string }
     >();
     if (!imagesZip?.buffer) return images;
 
-    if (extname(imagesZip.originalname || "").toLowerCase() !== ".zip") {
-      throw new BadRequestException("Product images must be provided as a ZIP file");
-    }
-
-    let zip: AdmZip;
-    try {
-      zip = new AdmZip(imagesZip.buffer);
-    } catch {
-      throw new BadRequestException("The product images ZIP is invalid");
-    }
-
     const allowed = new Set([".jpg", ".jpeg", ".png", ".webp"]);
-    const entries = zip.getEntries().filter((entry) => !entry.isDirectory);
-    if (entries.length > 2000) {
-      throw new BadRequestException("The ZIP may contain at most 2,000 files");
-    }
-
+    const entries = await readImageZip(imagesZip.buffer);
     for (const entry of entries) {
-      const fileName = parse(entry.entryName.replaceAll("\\", "/")).base;
+      const normalizedName = entry.fileName;
+      const fileName = parse(normalizedName).base;
       const extension = extname(fileName).toLowerCase();
       if (!allowed.has(extension)) continue;
-      if (entry.header.size > 8 * 1024 * 1024) {
-        throw new BadRequestException(`${fileName} is larger than 8 MB`);
-      }
-
-      const data = entry.getData();
-      if (data.length > 8 * 1024 * 1024) {
-        throw new BadRequestException(`${fileName} is larger than 8 MB`);
-      }
+      const data = entry.data;
+      await validateImageBuffer(data);
 
       const image = { data, extension };
       images.set(`file:${fileName.toLowerCase()}`, image);
@@ -357,7 +346,7 @@ export class CrudService {
     return saved;
   }
 
-  async updateProduct(id: number, body: any): Promise<Product> {
+  async updateProduct(id: number, body: ProductDto): Promise<Product> {
     const product = await this.products.findOneByOrFail({ id });
     const category = await this.categories.findOneByOrFail({
       id: Number(body.categoryId),
@@ -411,10 +400,10 @@ export class CrudService {
       order: { name: "ASC" },
     });
   }
-  addCustomer(body: any) {
+  addCustomer(body: CreateCustomerDto) {
     return this.customers.save(this.customers.create(body));
   }
-  updateCustomer(id: number, body: any) {
+  updateCustomer(id: number, body: UpdateCustomerDto) {
     return this.customers.update(id, body);
   }
   deleteCustomer(id: number) {
@@ -426,7 +415,7 @@ export class CrudService {
   ordersAll() {
     return this.orders.find({ order: { orderDate: "DESC" } });
   }
-  async updateOrder(id: number, body: any) {
+  async updateOrder(id: number, body: UpdateOrderDto) {
     const order = await this.orders.findOne({
       where: { id },
       relations: {
@@ -441,18 +430,11 @@ export class CrudService {
       throw new BadRequestException("Order not found");
     }
 
-    /*
-    * Print button sends action: "PRINT".
-    * Only update the status; do not modify the order items.
-    */
+    // Printing must not alter delivery tracking.
     if (body.action === "PRINT") {
-      order.status = OrderStatus.PRINTED;
-      return this.orders.save(order);
+      return order;
     }
 
-    /*
-    * Any normal edit/save automatically becomes MODIFIED.
-    */
     if (body.orderDate) {
       order.orderDate = body.orderDate;
     }
@@ -471,7 +453,7 @@ export class CrudService {
       });
 
       const newItems = await Promise.all(
-        body.items.map(async (item: any) => {
+        body.items.map(async (item) => {
           const product = await this.products.findOneByOrFail({
             id: Number(item.productId),
           });
@@ -491,8 +473,6 @@ export class CrudService {
 
     if (body.status && Object.values(OrderStatus).includes(body.status)) {
       order.status = body.status as OrderStatus;
-    } else {
-      order.status = OrderStatus.MODIFIED;
     }
     await this.orders.save(order);
 
@@ -519,16 +499,37 @@ export class CrudService {
     month?: string;
     customerId?: number;
   } = {}) {
-    const allOrders = await this.ordersAll();
-    const orders = allOrders.filter((order) => {
-      if (filters.date) return order.orderDate === filters.date;
-      if (filters.from && filters.to) {
-        return order.orderDate >= filters.from && order.orderDate <= filters.to;
-      }
-      if (filters.month) return order.orderDate.startsWith(filters.month);
-      if (filters.customerId) return order.customer?.id === filters.customerId;
-      return true;
-    });
+    const query = this.orders
+      .createQueryBuilder("order")
+      .leftJoinAndSelect("order.customer", "customer")
+      .leftJoinAndSelect("order.items", "item")
+      .leftJoinAndSelect("item.product", "product")
+      .orderBy("order.orderDate", "DESC")
+      .addOrderBy("order.id", "DESC");
+
+    if (filters.date) {
+      query.andWhere("order.orderDate = :date", { date: filters.date });
+    } else if (filters.from && filters.to) {
+      query.andWhere("order.orderDate BETWEEN :from AND :to", {
+        from: filters.from,
+        to: filters.to,
+      });
+    } else if (filters.month && /^\d{4}-\d{2}$/.test(filters.month)) {
+      const [year, month] = filters.month.split("-").map(Number);
+      const nextMonth = new Date(Date.UTC(year, month, 1))
+        .toISOString()
+        .slice(0, 7);
+      query.andWhere(
+        "order.orderDate >= :monthStart AND order.orderDate < :nextMonth",
+        { monthStart: `${filters.month}-01`, nextMonth: `${nextMonth}-01` },
+      );
+    } else if (filters.customerId) {
+      query.andWhere("customer.id = :customerId", {
+        customerId: filters.customerId,
+      });
+    }
+
+    const orders = await query.getMany();
     const rows = orders.flatMap((o) => o.items.length ? o.items.map((i) => ({
       "Order ID": o.orderNo, Date: o.orderDate, Status: o.status,
       Customer: o.customer?.name || "", Address: o.customer?.address || "",
@@ -538,15 +539,11 @@ export class CrudService {
       Quantity: Number(i.quantity), "Unit Price (RM)": Number(i.unitPrice),
       "Line Total (RM)": Number(i.quantity) * Number(i.unitPrice),
     })) : [{ "Order ID": o.orderNo, Date: o.orderDate, Status: o.status, Customer: o.customer?.name || "" }]);
-    const sheet = XLSX.utils.json_to_sheet(rows);
-    const book = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(book, sheet, "Orders");
-    return XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+    return writeRowsToXlsx(rows, "Orders");
   }
   async importCustomers(file?: Express.Multer.File) {
-    if (!file) throw new BadRequestException("Select a CSV or Excel file");
-    const workbook = XLSX.read(file.buffer, { type: "buffer" });
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
+    validateSpreadsheetUpload(file);
+    const rows = await readSpreadsheetRows(file);
     const value = (row: Record<string, any>, names: string[]) => {
       const key = Object.keys(row).find(k => names.includes(k.trim().toLowerCase().replace(/[^a-z0-9]/g, "")));
       return key ? String(row[key]).trim() : "";
@@ -566,42 +563,73 @@ export class CrudService {
     return { imported: customers.length };
   }
   async stats() {
-    const customers = await this.customers.count();
-    const orders = await this.orders.find();
     const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const weekStartDate = new Date(now);
+    weekStartDate.setUTCDate(weekStartDate.getUTCDate() - 6);
+    const weekStart = weekStartDate.toISOString().slice(0, 10);
+    const monthStart = `${today.slice(0, 7)}-01`;
+    const nextMonth = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+    )
+      .toISOString()
+      .slice(0, 10);
+
+    const [customers, counts] = await Promise.all([
+      this.customers.count(),
+      this.orders
+        .createQueryBuilder("order")
+        .select(
+          "COUNT(CASE WHEN order.orderDate = :today THEN 1 END)",
+          "today",
+        )
+        .addSelect(
+          "COUNT(CASE WHEN order.orderDate BETWEEN :weekStart AND :today THEN 1 END)",
+          "week",
+        )
+        .addSelect(
+          "COUNT(CASE WHEN order.orderDate >= :monthStart AND order.orderDate < :nextMonth THEN 1 END)",
+          "month",
+        )
+        .setParameters({ today, weekStart, monthStart, nextMonth })
+        .getRawOne<{ today: string; week: string; month: string }>(),
+    ]);
+
     return {
       customers,
-      today: orders.filter(
-        (o) => o.orderDate === now.toISOString().slice(0, 10),
-      ).length,
-      week: orders.filter(
-        (o) => Date.now() - new Date(o.orderDate).getTime() < 604800000,
-      ).length,
-      month: orders.filter(
-        (o) => new Date(o.orderDate).getMonth() === now.getMonth(),
-      ).length,
+      today: Number(counts?.today || 0),
+      week: Number(counts?.week || 0),
+      month: Number(counts?.month || 0),
     };
   }
 }
+@UseGuards(AdminAuthGuard)
 @Controller()
 export class CrudController {
   constructor(private s: CrudService) {}
   @Get("categories") categories() {
     return this.s.categoriesAll();
   }
-  @Post("categories") addCategory(@Body() b: any) {
+  @Post("categories")
+  @Roles(Role.ADMIN)
+  addCategory(@Body() b: CreateCategoryDto) {
     return this.s.addCategory(b.name);
   }
-  @Delete("categories/:id") delCategory(@Param("id", ParseIntPipe) id: number) {
+  @Delete("categories/:id")
+  @Roles(Role.ADMIN)
+  delCategory(@Param("id", ParseIntPipe) id: number) {
     return this.s.deleteCategory(id);
   }
   @Get("products") products(@Query("search") q = "") {
     return this.s.productsAll(q);
   }
-  @Post("products") addProduct(@Body() b: any) {
+  @Post("products")
+  @Roles(Role.ADMIN)
+  addProduct(@Body() b: ProductDto) {
     return this.s.addProduct(b);
   }
   @Post("products/bulk-upload")
+  @Roles(Role.ADMIN)
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -610,7 +638,7 @@ export class CrudController {
       ],
       {
         storage: memoryStorage(),
-        limits: { files: 2, fileSize: 100 * 1024 * 1024 },
+        limits: { files: 2, fileSize: MAX_ZIP_BYTES },
       },
     ),
   )
@@ -620,15 +648,16 @@ export class CrudController {
   ) {
     const spreadsheet = files?.file?.[0];
     const imagesZip = files?.images?.[0];
-    if (spreadsheet?.size > 10 * 1024 * 1024) {
-      throw new BadRequestException("Spreadsheet must be 10 MB or smaller");
+    if (spreadsheet?.size && spreadsheet.size > MAX_SPREADSHEET_BYTES) {
+      throw new BadRequestException("Spreadsheet must be 5 MB or smaller");
     }
     return this.s.bulkUploadProducts(spreadsheet, imagesZip);
   }
   @Patch("products/:id/catalogue-status")
+  @Roles(Role.ADMIN)
   updateCatalogueStatus(
     @Param("id", ParseIntPipe) id: number,
-    @Body() body: { enabled: boolean },
+    @Body() body: CatalogueStatusDto,
   ) {
     if (typeof body.enabled !== "boolean") {
       throw new BadRequestException("enabled must be true or false");
@@ -636,32 +665,38 @@ export class CrudController {
     return this.s.updateCatalogueStatus(id, body.enabled);
   }
 
-  @Patch("products/:id") editProduct(
+  @Patch("products/:id")
+  @Roles(Role.ADMIN)
+  editProduct(
     @Param("id", ParseIntPipe) id: number,
-    @Body() b: any,
+    @Body() b: ProductDto,
   ) {
     return this.s.updateProduct(id, b);
   }
-  @Delete("products/all") clearProducts() {
+  @Delete("products/all")
+  @Roles(Role.ADMIN)
+  clearProducts() {
     return this.s.clearProducts();
   }
-  @Delete("products/:id") delProduct(@Param("id", ParseIntPipe) id: number) {
+  @Delete("products/:id")
+  @Roles(Role.ADMIN)
+  delProduct(@Param("id", ParseIntPipe) id: number) {
     return this.s.deleteProduct(id);
   }
   @Get("customers") customers(@Query("search") q = "") {
     return this.s.customersAll(q);
   }
-  @Post("customers") addCustomer(@Body() b: any) {
+  @Post("customers") addCustomer(@Body() b: CreateCustomerDto) {
     return this.s.addCustomer(b);
   }
   @Post("customers/bulk-upload")
-  @UseInterceptors(FileFieldsInterceptor([{ name: "file", maxCount: 1 }], { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(FileFieldsInterceptor([{ name: "file", maxCount: 1 }], { storage: memoryStorage(), limits: { fileSize: MAX_SPREADSHEET_BYTES } }))
   bulkCustomers(@UploadedFiles() files: { file?: Express.Multer.File[] }) {
     return this.s.importCustomers(files?.file?.[0]);
   }
   @Patch("customers/:id") editCustomer(
     @Param("id", ParseIntPipe) id: number,
-    @Body() b: any,
+    @Body() b: UpdateCustomerDto,
   ) {
     return this.s.updateCustomer(id, b);
   }
@@ -677,7 +712,7 @@ export class CrudController {
   @Patch("orders/:id")
   editOrder(
     @Param("id", ParseIntPipe) id: number,
-    @Body() body: any,
+    @Body() body: UpdateOrderDto,
   ) {
     return this.s.updateOrder(id, body);
   }

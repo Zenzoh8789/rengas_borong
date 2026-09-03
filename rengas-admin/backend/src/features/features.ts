@@ -9,18 +9,26 @@ import {
   Patch,
   Post,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import * as XLSX from "xlsx";
 import {
   DesignSetting,
   Notification,
   NotificationType,
   Product,
+  Role,
 } from "../entities";
+import { AdminAuthGuard } from "../auth/admin-auth.guard";
+import { Roles } from "../auth/roles.decorator";
+import {
+  MAX_SPREADSHEET_BYTES,
+} from "../uploads/upload-validation";
+import { readSpreadsheetRows } from "../uploads/spreadsheet";
+import { UpdateDesignDto } from "./design.dto";
 
 @Injectable()
 export class FeaturesService {
@@ -57,29 +65,7 @@ export class FeaturesService {
   }
 
   async importPrices(file?: Express.Multer.File) {
-    if (!file?.buffer?.length) {
-      throw new BadRequestException("Select a CSV or Excel file.");
-    }
-
-    let workbook: XLSX.WorkBook;
-    try {
-      workbook = XLSX.read(file.buffer, {
-        type: "buffer",
-        raw: false,
-      });
-    } catch {
-      throw new BadRequestException("The selected spreadsheet cannot be read.");
-    }
-
-    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-    if (!firstSheet) {
-      throw new BadRequestException("The spreadsheet does not contain a sheet.");
-    }
-
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, {
-      defval: "",
-      raw: false,
-    });
+    const rows = await readSpreadsheetRows(file);
 
     if (!rows.length) {
       throw new BadRequestException("The spreadsheet does not contain data.");
@@ -187,7 +173,7 @@ export class FeaturesService {
     return design;
   }
 
-  async saveDesign(body: Partial<DesignSetting>) {
+  async saveDesign(body: UpdateDesignDto) {
     await this.designs.upsert({ id: 1, ...body }, ["id"]);
     await this.notifications.save(
       this.notifications.create({
@@ -225,6 +211,7 @@ export class FeaturesService {
   }
 }
 
+@UseGuards(AdminAuthGuard)
 @Controller()
 export class FeaturesController {
   constructor(private service: FeaturesService) {}
@@ -250,10 +237,11 @@ export class FeaturesController {
   }
 
   @Post("products/import-price")
+  @Roles(Role.ADMIN)
   @UseInterceptors(
     FileInterceptor("file", {
       limits: {
-        fileSize: 25 * 1024 * 1024,
+        fileSize: MAX_SPREADSHEET_BYTES,
       },
     }),
   )
@@ -262,12 +250,14 @@ export class FeaturesController {
   }
 
   @Get("design-settings")
+  @Roles(Role.ADMIN)
   design() {
     return this.service.getDesign();
   }
 
   @Patch("design-settings")
-  saveDesign(@Body() body: Partial<DesignSetting>) {
+  @Roles(Role.ADMIN)
+  saveDesign(@Body() body: UpdateDesignDto) {
     return this.service.saveDesign(body);
   }
 }

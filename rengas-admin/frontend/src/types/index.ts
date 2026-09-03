@@ -39,7 +39,7 @@ export type Order = {
   orderNo: string;
   customer: Customer;
   orderDate: string;
-  status: "VIEW" | "MODIFIED" | "PRINTED";
+  status: "ACCEPTED" | "PACKED" | "SHIPPED" | "DELIVERED";
   items: OrderItem[];
 };
 

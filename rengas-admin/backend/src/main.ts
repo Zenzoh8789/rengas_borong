@@ -6,19 +6,12 @@ import {
 } from "@nestjs/platform-express";
 import cookieParser = require("cookie-parser");
 import express = require("express");
-import { createServer } from "http";
 import { join } from "path";
 import { AppModule } from "./app.module";
 import { getUploadDirectory } from "./storage";
 
 const expressApp = express();
-const server = createServer(expressApp);
 const port = Number(process.env.PORT) || 3000;
-
-// Listen immediately so Hostinger detects the server within 3 seconds.
-server.listen(port, "0.0.0.0", () => {
-  console.log(`HTTP server listening on port ${port}`);
-});
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(
@@ -27,6 +20,7 @@ async function bootstrap() {
   );
 
   app.use(cookieParser());
+  app.enableShutdownHooks();
 
   app.useStaticAssets(getUploadDirectory(), {
     prefix: "/uploads/",
@@ -55,20 +49,20 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
+      forbidNonWhitelisted: true,
+      forbidUnknownValues: true,
       transform: true,
+      stopAtFirstError: true,
     }),
   );
 
-  // The HTTP server is already listening.
-  await app.init();
-
-  console.log("RENGAS API initialized successfully");
+  // Nest initializes all modules (including the database) before opening the
+  // socket, so deployment health checks cannot receive a false success.
+  await app.listen(port, "0.0.0.0");
+  console.log(`RENGAS API initialized successfully on port ${port}`);
 }
 
 bootstrap().catch((error) => {
   console.error("Failed to initialize RENGAS API:", error);
-
-  server.close(() => {
-    process.exit(1);
-  });
+  process.exit(1);
 });

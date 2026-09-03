@@ -173,7 +173,7 @@ export function BulkUpload({
               ref={fileRef}
               hidden
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept=".csv,.xlsx"
               disabled={uploading || removing}
               onChange={(e) => {
                 const selectedFile = e.target.files?.[0] || null;

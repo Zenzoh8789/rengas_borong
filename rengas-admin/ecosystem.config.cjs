@@ -10,6 +10,7 @@ module.exports = {
     env_production: {
       NODE_ENV: "production",
       PORT: 3000,
+      ENV_FILE: "backend/.env",
       UPLOAD_DIR: "/var/www/rengas-admin/shared/uploads",
     },
   }],

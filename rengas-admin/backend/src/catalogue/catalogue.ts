@@ -7,6 +7,7 @@ import {
   Post,
   Query,
   Res,
+  UseGuards,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Response } from "express";
@@ -16,15 +17,36 @@ import PDFDocument = require("pdfkit");
 import QRCode = require("qrcode");
 import * as sharpModule from "sharp";
 import { In, Repository } from "typeorm";
+import { Type } from "class-transformer";
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsInt,
+  IsNotEmpty,
+  IsString,
+  Matches,
+  MaxLength,
+  Min,
+} from "class-validator";
 import { Category, DesignSetting, Product } from "../entities";
 import { getUploadDirectory } from "../storage";
+import { AdminAuthGuard } from "../auth/admin-auth.guard";
+import { Roles } from "../auth/roles.decorator";
+import { Role } from "../entities";
 
-type GenerateCatalogueDto = {
-  title: string;
-  from: string;
-  to: string;
+class GenerateCatalogueDto {
+  @IsString() @IsNotEmpty() @MaxLength(150) title: string;
+  @Matches(/^\d{4}-\d{2}-\d{2}$/) from: string;
+  @Matches(/^\d{4}-\d{2}-\d{2}$/) to: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
   categoryIds: number[];
-};
+}
 
 const sharpFactory = (
   (sharpModule as any).default ??
@@ -1014,6 +1036,8 @@ private readUploadedFile(
   }
 }
 
+@UseGuards(AdminAuthGuard)
+@Roles(Role.ADMIN)
 @Controller("catalogues")
 export class CatalogueController {
   constructor(private readonly catalogue: CatalogueService) {}

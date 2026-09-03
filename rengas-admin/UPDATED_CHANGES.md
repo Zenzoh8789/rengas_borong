@@ -93,3 +93,16 @@ Back up the database before running the update.
 5. Run `pm2 restart rengas-backend` and verify the image still opens.
 
 The backend TypeScript production build was executed successfully after these changes.
+
+## Step 10: database query performance
+
+1. Dashboard order totals are calculated by one conditional aggregate query instead
+   of loading every order into Node.js memory.
+2. Customer and order totals run concurrently.
+3. Weekly totals use a bounded seven-day calendar range and do not count future orders.
+4. Monthly totals use year-aware date boundaries.
+5. Order exports apply date, range, month, or customer filters in MySQL before rows
+   are loaded and joined.
+6. New installations include indexes for order date and customer/date lookups.
+7. Existing installations can safely run
+   `database/step10-performance-indexes.sql` more than once.

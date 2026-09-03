@@ -5,54 +5,54 @@ import {
   Get,
   Injectable,
   Post,
+  Req,
+  UnauthorizedException,
+  UseGuards,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
   IsArray,
   IsInt,
-  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
+  ArrayMinSize,
+  ArrayMaxSize,
+  MaxLength,
   Min,
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { Repository } from "typeorm";
 import { Customer, Order, OrderItem, OrderStatus, Product } from "../entities";
+import {
+  CustomerAuthGuard,
+  CustomerRequest,
+} from "../auth/customer-auth.guard";
 
 class StoreOrderItemDto {
-  @IsInt() @Min(1) productId: number;
-  @IsNumber() @Min(0.01) quantity: number;
+  @Type(() => Number) @IsInt() @Min(1) productId: number;
+  @Type(() => Number) @IsNumber() @Min(0.01) quantity: number;
 }
-class StoreCustomerDto {
-  @IsString()
-  @IsNotEmpty()
-  name: string;
-
-  @IsOptional()
-  @IsString()
-  companyName?: string;
-
-  @IsString()
-  @IsNotEmpty()
-  tinNumber: string;
-
-  @IsOptional()
-  @IsString()
-  phoneNumber?: string;
-
-  @IsOptional()
-  @IsString()
-  whatsappNumber?: string;
-
-  @IsOptional()
-  @IsString()
-  address?: string;
+class LegacyStoreCustomerDto {
+  @IsOptional() @IsString() @MaxLength(150) name?: string;
+  @IsOptional() @IsString() @MaxLength(180) companyName?: string;
+  @IsOptional() @IsString() @MaxLength(100) tinNumber?: string;
+  @IsOptional() @IsString() @MaxLength(40) phoneNumber?: string;
+  @IsOptional() @IsString() @MaxLength(40) whatsappNumber?: string;
+  @IsOptional() @IsString() @MaxLength(500) address?: string;
 }
 class CreateStoreOrderDto {
-  @ValidateNested() @Type(() => StoreCustomerDto) customer: StoreCustomerDto;
+  // Accepted for compatibility with existing storefront clients, but ignored;
+  // customer identity always comes from the verified JWT.
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LegacyStoreCustomerDto)
+  customer?: LegacyStoreCustomerDto;
+
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
   @ValidateNested({ each: true })
   @Type(() => StoreOrderItemDto)
   items: StoreOrderItemDto[];
@@ -108,7 +108,7 @@ export class StoreService {
     return [...groups.values()];
   }
 
-  async createOrder(input: CreateStoreOrderDto) {
+  async createOrder(customerId: number, input: CreateStoreOrderDto) {
     if (!input.items?.length) {
       throw new BadRequestException("Add at least one item");
     }
@@ -125,35 +125,9 @@ export class StoreService {
       throw new BadRequestException("One or more products no longer exist");
     }
 
-    /*
-     * Find or create customer.
-     */
-    let customer = input.customer.phoneNumber
-      ? await this.customers.findOneBy({
-          phoneNumber: input.customer.phoneNumber,
-        })
-      : null;
-
+    const customer = await this.customers.findOneBy({ id: customerId });
     if (!customer) {
-      customer = await this.customers.save(
-        this.customers.create({
-          name: input.customer.name,
-          companyName: input.customer.companyName,
-          tinNumber: input.customer.tinNumber,
-          phoneNumber: input.customer.phoneNumber,
-          whatsappNumber: input.customer.whatsappNumber,
-          address: input.customer.address,
-        }),
-      );
-    } else {
-      customer.name = input.customer.name;
-      customer.companyName = input.customer.companyName;
-      customer.tinNumber = input.customer.tinNumber;
-      customer.phoneNumber = input.customer.phoneNumber;
-      customer.whatsappNumber = input.customer.whatsappNumber;
-      customer.address = input.customer.address;
-
-      customer = await this.customers.save(customer);
+      throw new UnauthorizedException("The customer account no longer exists.");
     }
 
     /*
@@ -164,7 +138,7 @@ export class StoreService {
       this.orders.create({
         orderNo: `TEMP-${Date.now()}`,
         orderDate: new Date().toISOString().slice(0, 10),
-        status: OrderStatus.VIEW,
+        status: OrderStatus.ACCEPTED,
         customer,
         items: [],
       }),
@@ -215,8 +189,9 @@ export class StoreService {
     });
   }
 
-  async getOrders() {
+  async getOrders(customerId: number) {
   const orders = await this.orders.find({
+    where: { customer: { id: customerId } },
     relations: {
       customer: true,
       items: {
@@ -283,14 +258,19 @@ export class StoreController {
   }
 
   @Get("orders")
-  getOrders() {
-    return this.store.getOrders();
+  @UseGuards(CustomerAuthGuard)
+  getOrders(@Req() request: CustomerRequest) {
+    return this.store.getOrders(request.user!.customerId);
   }
 
   @Post("orders")
-  async createOrder(@Body() input: CreateStoreOrderDto) {
+  @UseGuards(CustomerAuthGuard)
+  async createOrder(
+    @Req() request: CustomerRequest,
+    @Body() input: CreateStoreOrderDto,
+  ) {
     try {
-      return await this.store.createOrder(input);
+      return await this.store.createOrder(request.user!.customerId, input);
     } catch (error) {
       console.error("CREATE ORDER FAILED:", error);
       throw error;

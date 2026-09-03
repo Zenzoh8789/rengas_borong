@@ -3,6 +3,7 @@ import {
   Controller,
   Post,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
@@ -11,17 +12,27 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as sharpModule from "sharp";
 import { getUploadDirectory } from "../storage";
+import { AdminAuthGuard } from "../auth/admin-auth.guard";
+import { Roles } from "../auth/roles.decorator";
+import { Role } from "../entities";
+import {
+  MAX_IMAGE_BYTES,
+  MAX_IMAGE_PIXELS,
+  validateImageBuffer,
+} from "./upload-validation";
 
 const sharpFactory = ((sharpModule as any).default ?? sharpModule) as any;
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 
+@UseGuards(AdminAuthGuard)
+@Roles(Role.ADMIN)
 @Controller("uploads")
 export class UploadsController {
   @Post("image")
   @UseInterceptors(
     FileInterceptor("image", {
       storage: memoryStorage(),
-      limits: { files: 1, fileSize: 8 * 1024 * 1024 },
+      limits: { files: 1, fileSize: MAX_IMAGE_BYTES },
       fileFilter: (_request, file, callback) => {
         if (!allowedTypes.has(file.mimetype)) {
           return callback(
@@ -37,13 +48,17 @@ export class UploadsController {
     if (!file?.buffer) {
       throw new BadRequestException("Please select a valid image.");
     }
+    await validateImageBuffer(file.buffer);
 
     const uploadDirectory = getUploadDirectory();
     await mkdir(uploadDirectory, { recursive: true });
     const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}.jpg`;
 
     try {
-      const optimized = await sharpFactory(file.buffer, { failOn: "error" })
+      const optimized = await sharpFactory(file.buffer, {
+        failOn: "error",
+        limitInputPixels: MAX_IMAGE_PIXELS,
+      })
         .rotate()
         .resize({
           width: 1600,

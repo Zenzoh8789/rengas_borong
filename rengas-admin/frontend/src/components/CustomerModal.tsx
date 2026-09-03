@@ -49,7 +49,7 @@ export function CustomerModal({ close, setToast }: { close: () => void; setToast
       </form>
       <section className="customer-bulk-card">
         <h2><Upload />Bulk Upload</h2>
-        <input ref={fileRef} hidden type="file" accept=".csv,.xlsx,.xls" onChange={(e: ChangeEvent<HTMLInputElement>) => upload(e.target.files?.[0])} />
+        <input ref={fileRef} hidden type="file" accept=".csv,.xlsx" onChange={(e: ChangeEvent<HTMLInputElement>) => upload(e.target.files?.[0])} />
         <button className="customer-drop" disabled={busy} onClick={() => fileRef.current?.click()} onDragOver={(e: DragEvent) => e.preventDefault()} onDrop={(e: DragEvent) => { e.preventDefault(); upload(e.dataTransfer.files[0]); }}>
           <Upload /><b>{busy ? "Uploading..." : "Drag & Drop Customer CSV / Excel"}</b><span>Click here or drop customer file to upload in bulk.</span><small>Format: Name, Address, TIN Number, Phone Number, WhatsApp Number</small>
         </button>

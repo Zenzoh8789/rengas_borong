@@ -2762,15 +2762,23 @@ aside {
   font-size: 13px;
   font-weight: 750;
 }
-.status.printed {
+.status.delivered {
   color: #008344;
   background: #eafbf2;
 }
-.status.modified {
+.status.packed {
   color: #c34b00;
   background: #fff7e5;
 }
-.status.view {
+.status.accepted {
+  color: #164cc5;
+  background: #edf3ff;
+}
+.status.shipped {
+  color: #6d32a8;
+  background: #f5edff;
+}
+.status.cancelled {
   color: #bf1010;
   background: #fff0f0;
 }

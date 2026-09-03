@@ -366,9 +366,7 @@ export function Orders({
                   <span>{o.items.length}</span>
                   <b>{money(total(o))}</b>
                   <em className={`status ${o.status.toLowerCase()}`}>
-                    {o.status === "VIEW"
-                      ? "View"
-                      : o.status[0] + o.status.slice(1).toLowerCase()}
+                    {o.status[0] + o.status.slice(1).toLowerCase()}
                   </em>
                   <div className="row-actions">
                     <button
@@ -383,20 +381,6 @@ export function Orders({
                     <button onClick={() => printOrder(o)}>
                       <Printer />
                       Print
-                    </button>
-                    <button
-                      className="danger-icon"
-                      onClick={async () => {
-                        if (confirm(`Delete ${o.orderNo}?`)) {
-                          await request(`/orders/${o.id}`, {
-                            method: "DELETE",
-                          });
-                          load();
-                        }
-                      }}
-                    >
-                      <Trash2 />
-                      Delete
                     </button>
                   </div>
                 </div>
@@ -890,8 +874,8 @@ function ModifyOrder({
   );
 
   const [orderQuery, setOrderQuery] = useState("");
-  const [productQuery, setProductQuery] = useState("");
   const [removeOrders, setRemoveOrders] = useState<number[]>([]);
+  const [productQuery, setProductQuery] = useState("");
   const [removeItems, setRemoveItems] = useState<number[]>([]);
 
   const shownOrders = orders.filter((order) =>
@@ -915,33 +899,17 @@ function ModifyOrder({
   };
 
   const deleteIds = async (ids: number[]) => {
-    if (!ids.length) {
-      return;
-    }
-
-    if (
-      !confirm(
-        `Remove ${ids.length} order${ids.length > 1 ? "s" : ""}?`,
-      )
-    ) {
-      return;
-    }
+    if (!ids.length) return;
+    if (!confirm(`Remove ${ids.length} order${ids.length > 1 ? "s" : ""}?`)) return;
 
     await Promise.all(
-      ids.map((id) =>
-        request(`/orders/${id}`, {
-          method: "DELETE",
-        }),
-      ),
+      ids.map((id) => request(`/orders/${id}`, { method: "DELETE" })),
     );
-
     setRemoveOrders([]);
-
     if (selected && ids.includes(selected.id)) {
       setSelected(null);
       setDraft(null);
     }
-
     changed();
   };
 
@@ -989,8 +957,7 @@ function ModifyOrder({
           <div>
             <h2>Modify Order</h2>
             <p>
-              Search order, add/remove products, and remove single or multiple
-              orders.
+              Search an order, update its delivery status, and modify products.
             </p>
           </div>
           <button className="modal-x" onClick={close}>
@@ -1134,9 +1101,10 @@ function ModifyOrder({
                           })
                         }
                       >
-                        <option value="VIEW">View</option>
-                        <option value="MODIFIED">Modified</option>
-                        <option value="PRINTED">Printed</option>
+                        <option value="ACCEPTED">Accepted</option>
+                        <option value="PACKED">Packed</option>
+                        <option value="SHIPPED">Shipped</option>
+                        <option value="DELIVERED">Delivered</option>
                       </select>
                     </label>
                   </div>

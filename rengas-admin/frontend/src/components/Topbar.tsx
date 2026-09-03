@@ -55,7 +55,7 @@ export function Topbar({
     if (!file) return;
 
     const extension = file.name.split(".").pop()?.toLowerCase();
-    if (!extension || !["csv", "xlsx", "xls"].includes(extension)) {
+    if (!extension || !["csv", "xlsx"].includes(extension)) {
       setToast({
         type: "error",
         message: "Select a CSV or Excel file with Code and Price columns.",
@@ -126,7 +126,7 @@ export function Topbar({
               ref={fileRef}
               hidden
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept=".csv,.xlsx"
               onChange={(e) => {
                 importPrice(e.target.files?.[0]);
                 e.currentTarget.value = "";

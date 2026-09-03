@@ -56,11 +56,24 @@ API runs at `http://localhost:3000/api`; Adminer runs at `http://localhost:8080`
 
 ## Production notes
 
-Change `JWT_SECRET` and database passwords before production. Login is authenticated against users stored in the database using bcrypt password hashes and the selected role. Store uploaded images in S3-compatible object storage, add a JWT authorization guard to protected controllers, and serve both applications behind HTTPS.
+Set `JWT_SECRET` to at least 32 random characters and configure all database variables before starting the application. Startup rejects missing, placeholder, and known default secrets. Login is authenticated against users stored in the database using bcrypt password hashes and the selected role. Protected controllers enforce JWT and role authorization; serve the application behind HTTPS.
 
 ## Main API
 
 `POST /api/auth/login`, `GET/POST /api/categories`, `GET/POST/PATCH/DELETE /api/products`, `GET/POST/PATCH/DELETE /api/customers`, `GET /api/orders`, `GET /api/dashboard/stats`.
+
+### API role permissions
+
+- `ADMIN` has full access to protected administration routes.
+- `ORDER_ADMIN` can read products/categories, manage customers and orders,
+  export orders, view dashboard statistics, and use notifications.
+- Product/category mutations, image uploads, price imports, design settings,
+  and catalogue generation require `ADMIN`.
+- Authenticated users without an allowed role receive HTTP `403`; missing or
+  invalid sessions receive HTTP `401`.
+- Storefront product browsing is public. Storefront order listing and creation
+  require a `CUSTOMER` JWT; the backend always derives the customer ID from the
+  verified token and never trusts customer identity supplied in the request.
 
 Product images are uploaded through `POST /api/uploads/image` and served from the backend `/uploads` directory. For production hosting, replace local upload storage with S3-compatible object storage so files survive deployments.
 
@@ -89,7 +102,22 @@ After downloading a newer project version, apply new tables and seed categories 
 Get-Content database\upgrade.sql | docker compose exec -T mysql mysql -uroot -proot
 ```
 
-Price imports accept `.csv`, `.xls`, or `.xlsx` files with `Code` and `Price` columns. Backend notifications are created when products, categories, prices, or design settings change.
+Price imports accept `.csv` or `.xlsx` files with `Code` and `Price` columns. Legacy `.xls` is intentionally rejected; save it as `.xlsx` or CSV before upload. Backend notifications are created when products, categories, prices, or design settings change.
+
+Upload safety limits: spreadsheets are limited to 5 MB, 5 sheets, and 10,000
+rows; product-image ZIPs are limited to 25 MB, 500 entries, and 100 MB total
+uncompressed image data; individual JPG/PNG/WEBP images are limited to 5 MB
+and 25 megapixels. File extensions, MIME types, binary signatures, decoded image
+formats, and ZIP paths are validated by the backend.
+
+Spreadsheet processing uses ExcelJS and ZIP processing uses yauzl. The previous
+`xlsx` and `adm-zip` packages are not included because their unresolved security
+advisories affect files accepted by this application.
+
+JSON request bodies use validated DTOs. Unknown properties are rejected, numeric
+IDs and prices are converted and range-checked, strings have database-aligned
+length limits, nested order items are validated, and asset URLs allow only HTTPS
+or local `/uploads/` paths.
 
 ## Generate catalogue PDF
 
