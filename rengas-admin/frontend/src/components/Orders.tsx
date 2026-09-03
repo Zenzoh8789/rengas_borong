@@ -13,6 +13,7 @@ import {
   Trash2,
   Users,
   X,
+  ChevronDown,
 } from "lucide-react";
 import { API, request } from "../api/client";
 import type { Customer, Order, Product, ToastState } from "../types";
@@ -25,10 +26,12 @@ const total = (o: Order) =>
 
 export function Orders({
   view,
+  selectedCustomerId = null,
   setModal,
   setToast,
 }: {
   view: "orders" | "customers";
+  selectedCustomerId?: number | null;
   setModal: (v: string | null) => void;
   setToast: (v: ToastState) => void;
 }) {
@@ -43,6 +46,7 @@ export function Orders({
     [customerView, setCustomerView] = useState<Customer | null>(null),
     [customerEdit, setCustomerEdit] = useState<Customer | null>(null),
     [exportOpen, setExportOpen] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
   const load = () =>
     Promise.all([
       request("/orders"),
@@ -64,10 +68,45 @@ export function Orders({
     return () => window.removeEventListener("export-orders", run);
   }, []);
   useEffect(() => setPage(1), [query, month, view]);
+
+  const activeCustomerId = selectedCustomerId ?? null;
+  const selectedCustomer = activeCustomerId === null
+    ? null
+    : customers.find((customer) => customer.id === activeCustomerId) || null;
+  const belongsToSelectedCustomer = (customer?: Customer) => {
+    if (activeCustomerId === null) return true;
+    if (!customer) return false;
+    if (customer.id === activeCustomerId) return true;
+    return Boolean(
+      selectedCustomer?.name &&
+      customer.name?.trim().toLowerCase() ===
+        selectedCustomer.name.trim().toLowerCase(),
+    );
+  };
+
+  const updateOrderStatus = async (order: Order, status: Order["status"]) => {
+    if (status === order.status || updatingStatus !== null) return;
+    setUpdatingStatus(order.id);
+    try {
+      const updated = await request(`/orders/${order.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      setOrders((current) =>
+        current.map((item) => item.id === order.id ? updated : item),
+      );
+      setToast({ type: "success", message: `${order.orderNo} status updated` });
+    } catch {
+      setToast({ type: "error", message: "Unable to update order status" });
+    } finally {
+      setUpdatingStatus(null);
+    }
+  };
   const filteredOrders = useMemo(
     () =>
       orders.filter(
         (o) =>
+          belongsToSelectedCustomer(o.customer) &&
           (!month || o.orderDate.startsWith(month)) &&
           [
             o.orderNo,
@@ -82,17 +121,19 @@ export function Orders({
             .toLowerCase()
             .includes(query.trim().toLowerCase()),
       ),
-    [orders, query, month],
+    [orders, query, month, selectedCustomerId, selectedCustomer],
   );
   const filteredCustomers = useMemo(
     () =>
-      customers.filter((c) =>
-        [c.name, c.address, c.tinNumber, c.phoneNumber, c.whatsappNumber]
-          .join(" ")
-          .toLowerCase()
-          .includes(query.trim().toLowerCase()),
+      customers.filter(
+        (c) =>
+          (activeCustomerId === null || c.id === activeCustomerId) &&
+          [c.name, c.address, c.tinNumber, c.phoneNumber, c.whatsappNumber]
+            .join(" ")
+            .toLowerCase()
+            .includes(query.trim().toLowerCase()),
       ),
-    [customers, query],
+    [customers, query, activeCustomerId],
   );
   const rows = view === "orders" ? filteredOrders : filteredCustomers,
     pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE)),
@@ -365,9 +406,31 @@ export function Orders({
                   <span>{o.orderDate}</span>
                   <span>{o.items.length}</span>
                   <b>{money(total(o))}</b>
-                  <em className={`status ${o.status.toLowerCase()}`}>
-                    {o.status[0] + o.status.slice(1).toLowerCase()}
-                  </em>
+                  <div className={`status-select-wrap ${o.status.toLowerCase()}`}>
+                    <select
+                      className="status-select"
+                      value={o.status}
+                      disabled={updatingStatus === o.id}
+                      aria-label={`Status for ${o.orderNo}`}
+                      onChange={(event) =>
+                        void updateOrderStatus(
+                          o,
+                          event.target.value as Order["status"],
+                        )
+                      }
+                    >
+                      <option value="ACCEPTED">Accepted</option>
+                      <option value="PACKED">Packed</option>
+                      <option value="SHIPPED">Shipped</option>
+                      <option value="DELIVERED">Delivered</option>
+                    </select>
+                    <ChevronDown
+                      className="status-select-arrow"
+                      size={16}
+                      strokeWidth={2.5}
+                      aria-hidden="true"
+                    />
+                  </div>
                   <div className="row-actions">
                     <button
                       onClick={() => {
@@ -376,11 +439,9 @@ export function Orders({
                       }}
                     >
                       <Pencil />
-                      Edit
                     </button>
                     <button onClick={() => printOrder(o)}>
                       <Printer />
-                      Print
                     </button>
                   </div>
                 </div>
@@ -410,11 +471,9 @@ export function Orders({
                   <div className="row-actions">
                     <button onClick={() => setCustomerView(c)}>
                       <Eye />
-                      View
                     </button>
                     <button onClick={() => setCustomerEdit(c)}>
                       <Pencil />
-                      Edit
                     </button>
                     <button
                       className="danger-icon"
@@ -435,7 +494,6 @@ export function Orders({
                       }}
                     >
                       <Trash2 />
-                       Delete
                     </button>
                   </div>
                 </div>
@@ -509,6 +567,55 @@ export function Orders({
 }
 
 type ExportFilter = "date" | "range" | "month" | "customer";
+
+const displayDate = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return "";
+  const [year, month, day] = value.split("-");
+  return `${day}-${month}-${year}`;
+};
+
+const displayMonth = (value: string) => {
+  if (!/^\d{4}-\d{2}$/.test(value)) return "";
+  const [year, month] = value.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-GB", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, month - 1, 1));
+};
+
+function ExportPicker({
+  type,
+  value,
+  onChange,
+  label,
+}: {
+  type: "date" | "month";
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+}) {
+  const formatted = type === "date" ? displayDate(value) : displayMonth(value);
+  return (
+    <div className="export-picker">
+      <input
+        className="export-picker-display"
+        value={formatted}
+        placeholder={type === "date" ? "DD-MM-YYYY" : "Choose month"}
+        readOnly
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+      <CalendarDays className="export-picker-icon" aria-hidden="true" />
+      <input
+        className="export-picker-native"
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label={label}
+      />
+    </div>
+  );
+}
 
 function OrderExportModal({
   customers,
@@ -596,7 +703,7 @@ function OrderExportModal({
           {filter === "date" && (
             <label>
               <span>Date</span>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <ExportPicker type="date" value={date} onChange={setDate} label="Export date" />
             </label>
           )}
 
@@ -604,11 +711,11 @@ function OrderExportModal({
             <div className="export-date-range">
               <label>
                 <span>Date From</span>
-                <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+                <ExportPicker type="date" value={from} onChange={setFrom} label="Date from" />
               </label>
               <label>
                 <span>Date To</span>
-                <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+                <ExportPicker type="date" value={to} onChange={setTo} label="Date to" />
               </label>
             </div>
           )}
@@ -616,10 +723,11 @@ function OrderExportModal({
           {filter === "month" && (
             <label>
               <span>Month</span>
-              <input
+              <ExportPicker
                 type="month"
                 value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
+                onChange={setSelectedMonth}
+                label="Export month"
               />
             </label>
           )}
@@ -957,7 +1065,7 @@ function ModifyOrder({
           <div>
             <h2>Modify Order</h2>
             <p>
-              Search an order, update its delivery status, and modify products.
+              Search an order and modify its date or products.
             </p>
           </div>
           <button className="modal-x" onClick={close}>
@@ -1049,29 +1157,13 @@ function ModifyOrder({
               ) : (
                 <>
                   <h3>
-                    <Pencil />
-                    Order Modify
+                    <Eye />
+                    Order Details
                   </h3>
                   <div className="order-fields">
                     <label>
                       CUSTOMER
-                      <select
-                        value={draft.customer.id}
-                        onChange={(e) =>
-                          setDraft({
-                            ...draft,
-                            customer: customers.find(
-                              (c) => c.id === Number(e.target.value),
-                            )!,
-                          })
-                        }
-                      >
-                        {customers.map((c) => (
-                          <option value={c.id} key={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
+                      <input value={draft.customer.name} readOnly />
                     </label>
                     <label>
                       PHONE
@@ -1083,29 +1175,9 @@ function ModifyOrder({
                     <label>
                       DATE
                       <input
-                        type="date"
-                        value={draft.orderDate}
-                        onChange={(e) =>
-                          setDraft({ ...draft, orderDate: e.target.value })
-                        }
+                        value={displayDate(draft.orderDate)}
+                        readOnly
                       />
-                    </label>
-                    <label>
-                      STATUS
-                      <select
-                        value={draft.status}
-                        onChange={(e) =>
-                          setDraft({
-                            ...draft,
-                            status: e.target.value as Order["status"],
-                          })
-                        }
-                      >
-                        <option value="ACCEPTED">Accepted</option>
-                        <option value="PACKED">Packed</option>
-                        <option value="SHIPPED">Shipped</option>
-                        <option value="DELIVERED">Delivered</option>
-                      </select>
                     </label>
                   </div>
                   <label className="product-search">

@@ -2099,7 +2099,7 @@ aside {
   min-width: 255px;
 }
 .order-table .row-actions {
-  min-width: 280px;
+  min-width: 0;
 }
 .customer-details-dialog {
   width: min(950px, calc(100vw - 32px));
@@ -2361,6 +2361,8 @@ aside {
   -webkit-overflow-scrolling: touch;
   padding-bottom: 7px;
 }
+
+
 .admin-scroll-table::-webkit-scrollbar {
   height: 10px;
 }
@@ -2371,6 +2373,17 @@ aside {
 .admin-scroll-table::-webkit-scrollbar-track {
   background: #f1f3f7;
   border-radius: 999px;
+}
+.admin-scroll-table .order-table {
+  min-width: 1120px;
+}
+
+.admin-scroll-table::-webkit-scrollbar-button,
+.admin-scroll-table::-webkit-scrollbar-button:single-button {
+  width: 0;
+  height: 0;
+  display: none;
+  background: transparent;
 }
 .admin-scroll-table .order-table {
   min-width: 1120px;
@@ -2702,7 +2715,65 @@ aside {
 .order-table .data-row {
   grid-template-columns:
     72px 130px minmax(230px, 1.5fr)
-    120px 70px 125px 115px 170px;
+    120px 70px 125px 135px 150px;
+}
+.order-table .status-select-wrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  border-radius: 999px;
+}
+.order-table .status-select-wrap.accepted {
+  color: #164cc5;
+  background: #edf3ff;
+}
+.order-table .status-select-wrap.packed {
+  color: #c34b00;
+  background: #fff7e5;
+}
+.order-table .status-select-wrap.shipped {
+  color: #6d32a8;
+  background: #f5edff;
+}
+.order-table .status-select-wrap.delivered {
+  color: #008344;
+  background: #eafbf2;
+}
+.order-table .status-select {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 42px 10px 18px;
+  border: 0;
+  outline: 0;
+  border-radius: inherit;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: 800;
+  text-align: center;
+  text-align-last: center;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+}
+.order-table .status-select-arrow {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  color: currentColor;
+  pointer-events: none;
+}
+.order-table .status-select-wrap:has(.status-select:disabled) {
+  opacity: 0.65;
+}
+.order-table .status-select:disabled {
+  cursor: wait;
+}
+.order-table .row-actions {
+  gap: 8px;
+  white-space: nowrap;
 }
 .customer-table .data-head,
 .customer-table .data-row {
@@ -2741,9 +2812,6 @@ aside {
   overflow-wrap: anywhere;
 }
 
-.data-row > .order-id + .address-text {
-  margin-left: 16px;
-}
 .customer-cell {
   display: grid;
   gap: 5px;
@@ -3761,13 +3829,13 @@ img {
   .admin-scroll-table .order-table .data-head,
   .admin-scroll-table .order-table .data-row {
     width: 100%;
-    min-width: 1230px;
+    min-width: 1080px;
     display: grid;
     grid-template-columns:
       60px 120px minmax(220px, 1fr)
-      110px 80px 110px 110px 280px;
+      110px 70px 115px 150px 112px;
     align-items: center;
-    gap: 20px;
+    gap: 40px;
     padding: 16px 12px;
     font-size: 14px;
     border: 0;
@@ -3780,11 +3848,11 @@ img {
   .admin-scroll-table .customer-table .data-head,
   .admin-scroll-table .customer-table .data-row {
     width: 100%;
-    min-width: 1250px;
+    min-width: 1160px;
     display: grid;
-    grid-template-columns: 60px 170px minmax(280px, 1fr) 140px 150px 170px 280px;
+    grid-template-columns: 60px 160px minmax(250px, 1fr) 140px 150px 170px 164px;
     align-items: center;
-    gap: 20px;
+    gap: 40px;
     padding: 16px 12px;
     font-size: 14px;
     border: 0;
@@ -3812,10 +3880,17 @@ img {
 
   .admin-scroll-table .row-actions {
     min-width: 0;
+    width: 100%;
+    justify-content: center;
+    gap: 8px;
     flex-wrap: nowrap;
   }
 
   .admin-scroll-table .row-actions button {
+    width: 46px;
+    min-width: 46px;
+    padding: 0;
+    justify-content: center;
     white-space: nowrap;
   }
 }
@@ -4041,6 +4116,50 @@ body:has(.backdrop) {
 .export-filter-fields select:focus {
   border-color: #075ce5;
   box-shadow: 0 0 0 3px rgb(7 92 229 / 10%);
+}
+
+.export-filter-fields .export-picker {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.export-filter-fields .export-picker-display {
+  width: 100%;
+  padding-right: 52px;
+  color: #1f2937;
+  background: #fff;
+  font-weight: 700;
+  text-transform: none;
+  pointer-events: none;
+}
+
+.export-picker-icon {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 20px;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  color: #111827;
+  pointer-events: none;
+}
+
+.export-filter-fields .export-picker-native {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.export-picker:focus-within .export-picker-display {
+  border-color: #1111af;
+  box-shadow: 0 0 0 3px rgb(17 17 175 / 10%);
 }
 
 .export-date-range {

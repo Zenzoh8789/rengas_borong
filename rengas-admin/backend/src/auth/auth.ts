@@ -5,10 +5,13 @@ import {
   Controller,
   Get,
   Injectable,
+  NotFoundException,
+  Patch,
   Post,
   Req,
   Res,
   UnauthorizedException,
+  UseGuards,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -21,12 +24,14 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from "class-validator";
 import { Request, Response } from "express";
 import * as bcrypt from "bcrypt";
 import { randomInt } from "node:crypto";
 import { Repository } from "typeorm";
 import { Customer, Role, User } from "../entities";
+import { CustomerAuthGuard, CustomerRequest } from "./customer-auth.guard";
 
 class LoginDto {
   @IsString()
@@ -97,6 +102,29 @@ class VerifyCustomerOtpDto extends SendCustomerOtpDto {
   @Length(6, 6)
   @Matches(/^\d{6}$/)
   otp: string;
+}
+
+class UpdateCustomerProfileDto {
+  @IsString() @IsNotEmpty() @MaxLength(150)
+  fullName: string;
+
+  @IsString() @IsNotEmpty() @MaxLength(180)
+  businessName: string;
+
+  @IsString() @Matches(/^\+?[0-9\s()-]{8,40}$/)
+  whatsappNumber: string;
+
+  @IsString() @Matches(/^\+?[0-9\s()-]{8,40}$/)
+  phoneNumber: string;
+
+  @IsString() @ValidateIf((_, value) => value !== "") @IsEmail() @MaxLength(190)
+  email: string;
+
+  @IsString() @IsNotEmpty() @MaxLength(100)
+  tinNumber: string;
+
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  address: string;
 }
 
 const normalizePhone = (value: string) => value.replace(/\D/g, "");
@@ -241,6 +269,37 @@ export class AuthService {
     return customer ? customerResponse(customer) : null;
   }
 
+  async updateCustomerProfile(customerId: number, dto: UpdateCustomerProfileDto) {
+    const customer = await this.customers.findOne({ where: { id: customerId } });
+    if (!customer) throw new NotFoundException("Customer account was not found.");
+
+    const phoneNumber = normalizePhone(dto.phoneNumber);
+    const whatsappNumber = normalizePhone(dto.whatsappNumber);
+    const email = dto.email.trim().toLowerCase();
+    const tinNumber = dto.tinNumber.trim();
+    const duplicate = await this.customers.findOne({
+      where: [
+        { phoneNumber },
+        ...(email ? [{ email }] : []),
+        { tinNumber },
+      ],
+    });
+    if (duplicate && duplicate.id !== customerId) {
+      throw new ConflictException("Phone number, email, or TIN number is already registered.");
+    }
+
+    customer.name = dto.fullName.trim();
+    customer.companyName = dto.businessName.trim();
+    customer.whatsappNumber = whatsappNumber;
+    customer.phoneNumber = phoneNumber;
+    customer.email = email || null;
+    customer.tinNumber = tinNumber;
+    customer.address = dto.address.trim();
+
+    const savedCustomer = await this.customers.save(customer);
+    return { customer: customerResponse(savedCustomer) };
+  }
+
   async verifyCustomerOtp(rawPhoneNumber: string, otp: string) {
     const phoneNumber = normalizePhone(rawPhoneNumber);
     const customer = await this.customers
@@ -351,6 +410,15 @@ export class AuthController {
     const result = await this.auth.verifyCustomerOtp(dto.phoneNumber, dto.otp);
     this.setAccessCookie(response, result.accessToken);
     return result;
+  }
+
+  @Patch("customer/profile")
+  @UseGuards(CustomerAuthGuard)
+  updateCustomerProfile(
+    @Req() request: CustomerRequest,
+    @Body() dto: UpdateCustomerProfileDto,
+  ) {
+    return this.auth.updateCustomerProfile(request.user!.customerId, dto);
   }
 
   @Get("me")
