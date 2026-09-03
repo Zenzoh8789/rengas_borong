@@ -350,7 +350,6 @@ export function Products({
                     onClick={() => setViewing(product)}
                   >
                     <Eye />
-                    View
                   </button>
 
                   <button
@@ -359,7 +358,6 @@ export function Products({
                     onClick={() => setEditing(product)}
                   >
                     <Pencil />
-                    Edit
                   </button>
 
                   <button

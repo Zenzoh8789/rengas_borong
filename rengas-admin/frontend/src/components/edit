@@ -1,0 +1,23 @@
+.admin-scroll-table {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 7px;
+}
+
+
+.admin-scroll-table::-webkit-scrollbar {
+  height: 10px;
+}
+.admin-scroll-table::-webkit-scrollbar-thumb {
+  background: #cbd2df;
+  border-radius: 999px;
+}
+.admin-scroll-table::-webkit-scrollbar-track {
+  background: #f1f3f7;
+  border-radius: 999px;
+}
+.admin-scroll-table .order-table {
+  min-width: 1120px;
+}
