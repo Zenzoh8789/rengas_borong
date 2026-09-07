@@ -63,6 +63,6 @@ export class AdminAuthGuard implements CanActivate {
     const bearerToken = authorization
       ? /^Bearer\s+(\S+)$/i.exec(authorization)?.[1]
       : undefined;
-    return bearerToken ?? request.cookies?.access_token;
+    return bearerToken ?? request.cookies?.admin_access_token;
   }
 }

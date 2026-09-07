@@ -31,7 +31,8 @@ import * as bcrypt from "bcrypt";
 import { randomInt } from "node:crypto";
 import { Repository } from "typeorm";
 import { Customer, Role, User } from "../entities";
-import { CustomerAuthGuard, CustomerRequest } from "./customer-auth.guard";
+import { CustomerAuthGuard } from "./customer-auth.guard";
+import type { CustomerRequest } from "./customer-auth.guard";
 
 class LoginDto {
   @IsString()
@@ -359,8 +360,8 @@ export class AuthController {
     private readonly jwt: JwtService,
   ) {}
 
-  private setAccessCookie(response: Response, accessToken: string) {
-    response.cookie("access_token", accessToken, {
+  private setAccessCookie(response: Response, accessToken: string, cookieName = "access_token") {
+    response.cookie(cookieName, accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
@@ -375,7 +376,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const result = await this.auth.login(dto);
-    this.setAccessCookie(response, result.accessToken);
+    this.setAccessCookie(response, result.accessToken, "admin_access_token");
     return { user: result.user };
   }
 
@@ -426,12 +427,12 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
-    // Customer and admin sites can share a cookie on localhost. Prefer the
-    // explicit token sent by the customer app; never fall back if it is invalid.
+    // Customer apps use their explicit bearer token. Admin sessions use a
+    // separate cookie so customer login cannot replace the admin session.
     const authorization = request.headers.authorization;
     const token = authorization !== undefined
       ? /^Bearer\s+(\S+)$/i.exec(authorization)?.[1]
-      : request.cookies?.access_token;
+      : request.cookies?.admin_access_token;
     if (!token) return { authenticated: false, role: null };
 
     try {
@@ -459,7 +460,7 @@ export class AuthController {
   }
 
   private clearAccessCookie(response: Response) {
-    response.clearCookie("access_token", {
+    response.clearCookie("admin_access_token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",

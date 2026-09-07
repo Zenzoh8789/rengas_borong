@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Bell,
+  MoreVertical,
   CheckCircle2,
   Cloud,
-  Download,
   FileText,
   LogOut,
   Palette,
@@ -23,6 +23,16 @@ export function Topbar({
   onImported,
   setToast,
 }: any) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const outside = (event: PointerEvent) => { if (!headerRef.current?.contains(event.target as Node)) { setMenuOpen(false); setOpen(false); } };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { setMenuOpen(false); setOpen(false); menuButtonRef.current?.focus(); } };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, []);
   const fileRef = useRef<HTMLInputElement>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unread, setUnread] = useState(0);
@@ -32,9 +42,9 @@ export function Topbar({
   const loadNotifications = () => {
     request("/notifications")
       .then(setNotifications)
-      .catch(() => {});
+      .catch((error) => console.error("Notification request failed:", error));
     request("/notifications/unread-count")
-      .then((d) => setUnread(d.count))
+      .then((d) => setUnread(Math.max(0, Number(d.count) || 0)))
       .catch(() => {});
   };
   useEffect(() => {
@@ -44,11 +54,13 @@ export function Topbar({
       loadNotifications();
       setSyncTime(new Date());
     };
-    const id = window.setInterval(refreshWhenVisible, 60000);
+    const id = window.setInterval(refreshWhenVisible, 15000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
     return () => {
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
     };
   }, []);
   async function importPrice(file?: File) {
@@ -102,16 +114,21 @@ export function Topbar({
   async function toggleBell() {
     setOpen((v) => !v);
     if (!open && unread) {
-      await request("/notifications/read-all", { method: "PATCH" });
-      setUnread(0);
+      try {
+        await request("/notifications/read-all", { method: "PATCH" });
+        setUnread(0);
+        setNotifications(current => current.map(item => ({ ...item, isRead: true })));
+      } catch {
+        setToast({ type: "error", message: "Could not mark notifications as read. Please try again." });
+      }
     }
   }
   return (
-    <header className="topbar">
-      <div>
-        <h2>{role === "ADMIN" ? "All Products" : "All Customers"}</h2>
-      </div>
-      <nav>
+    <header ref={headerRef} className={`topbar ${role !== "ADMIN" ? "customer-topbar" : ""}`}>
+      {role === "ADMIN" && <div><h2>All Products</h2></div>}
+      {role !== "ADMIN" && <div id="order-summary" />}
+      {role !== "ADMIN" && <button ref={menuButtonRef} type="button" className="customer-menu-toggle" aria-label="Open navigation" aria-expanded={menuOpen} aria-controls="topbar-actions" onClick={() => { setMenuOpen(!menuOpen); setOpen(false); }}><MoreVertical />{unread > 0 && <span className="notification-dot" aria-hidden="true" />}</button>}
+      <nav id="topbar-actions" className={menuOpen ? "customer-menu-open" : ""}>
         {role === "ADMIN" ? (
           <>
             <button className="green" onClick={() => setModal("catalogue")}>
@@ -146,22 +163,19 @@ export function Topbar({
           <>
             <button
               className={view === "orders" ? "primary" : ""}
-              onClick={() => setView("orders")}
+              onClick={() => { setView("orders"); setMenuOpen(false); setOpen(false); }}
             >
               <FileText />
               Orders
             </button>
             <button
               className={view === "customers" ? "primary" : ""}
-              onClick={() => setView("customers")}
+              onClick={() => { setView("customers"); setMenuOpen(false); setOpen(false); }}
             >
               <Users />
               Customers
             </button>
-            <button className="green" onClick={() => window.dispatchEvent(new Event("export-orders"))}>
-              <Download />
-              Export
-            </button>
+
           </>
         )}
        
@@ -174,11 +188,9 @@ export function Topbar({
             aria-expanded={open}
             aria-controls="notification-panel"
           >
-            <Bell />
+            <Bell /><span className="customer-menu-label">Notifications</span>
             {unread > 0 && (
-              <span className="notice-badge" aria-hidden="true">
-                {unread > 99 ? "99+" : unread}
-              </span>
+              <span className="notification-dot" aria-hidden="true" />
             )}
           </button>
 

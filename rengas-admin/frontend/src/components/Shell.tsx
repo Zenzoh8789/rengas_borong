@@ -6,7 +6,7 @@ import {
   X,
 } from "lucide-react";
 import { request } from "../api/client";
-import type { Category, Customer, Role, ToastState } from "../types";
+import type { Category, Customer, Order, Role, ToastState } from "../types";
 import { Topbar } from "./Topbar";
 import { Products } from "./Products";
 import { Orders } from "./Orders";
@@ -46,6 +46,7 @@ export function Shell({
 
   const [refresh, setRefresh] = useState(0);
   const [toast, setToast] = useState<ToastState>(loginToast);
+  const [sidebarOrders, setSidebarOrders] = useState<Order[]>([]);
   const [orderCustomers, setOrderCustomers] = useState<Customer[]>([]);
 
   useEffect(() => {
@@ -102,7 +103,7 @@ export function Shell({
     () =>
       orderCustomers.filter((customer) =>
         [
-          customer.name,
+          customer.companyName,
           customer.phoneNumber,
           customer.address,
         ]
@@ -171,7 +172,7 @@ export function Shell({
             value={sideQuery}
             onChange={(event) => setSideQuery(event.target.value)}
             placeholder={`Search ${
-              role === "ADMIN" ? "category" : "customer"
+              role === "ADMIN" ? "category" : "shop name / phone"
             }...`}
           />
 
@@ -186,18 +187,9 @@ export function Shell({
           )}
         </label>
 
-        <div className="side-title">
-          <b>
-            {role === "ADMIN" ? "Categories" : "Customer Details"}
-          </b>
-
-          <span>
-            {role === "ADMIN"
-              ? categories.length
-              : visibleCustomers.length}{" "}
-            {role === "ADMIN" ? "categories" : ""}
-          </span>
-        </div>
+        {role === "ADMIN" && <div className="side-title">
+          <b>Categories</b><span>{categories.length} categories</span>
+        </div>}
 
         <button
           type="button"
@@ -215,7 +207,7 @@ export function Shell({
                     total + (category.products?.length || 0),
                   0,
                 )
-              : orderCustomers.length}
+              : sidebarOrders.length}
           </span>
         </button>
 
@@ -241,9 +233,9 @@ export function Shell({
                 key={customer.id}
                 onClick={closeSidebarOnMobile}
               >
-                {customer.name}
+                {customer.companyName?.trim() || "Shop name not provided"}
 
-                <span>{customer.id}</span>
+                <span title="Orders">{sidebarOrders.filter(order => order.customer?.id === customer.id).length}</span>
               </button>
             ))}
 
@@ -298,6 +290,8 @@ export function Shell({
           />
         ) : (
           <Orders
+            refresh={refresh}
+            onDataLoaded={(orders, customers) => { setSidebarOrders(orders); setOrderCustomers(customers); }}
             view={view as "orders" | "customers"}
             setModal={setModal}
             setToast={setToast}
@@ -334,6 +328,7 @@ export function Shell({
 
       {modal === "customer" && (
         <CustomerModal
+          onSaved={() => { setView("customers"); setRefresh(value => value + 1); }}
           close={() => setModal(null)}
           setToast={setToast}
         />

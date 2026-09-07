@@ -24,7 +24,7 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 import { Repository } from "typeorm";
-import { Customer, Order, OrderItem, OrderStatus, Product } from "../entities";
+import { Customer, Order, OrderItem, OrderStatus, Product, Notification, NotificationType, Role } from "../entities";
 import {
   CustomerAuthGuard,
   CustomerRequest,
@@ -134,8 +134,11 @@ export class StoreService {
      * First save the order without items.
      * This creates the order ID.
      */
-    let order = await this.orders.save(
-      this.orders.create({
+    return this.orders.manager.transaction(async manager => {
+      const orderRepo = manager.getRepository(Order);
+      const itemRepo = manager.getRepository(OrderItem);
+    let order = await orderRepo.save(
+      orderRepo.create({
         orderNo: `TEMP-${Date.now()}`,
         orderDate: new Date().toISOString().slice(0, 10),
         status: OrderStatus.ACCEPTED,
@@ -145,7 +148,7 @@ export class StoreService {
     );
 
     order.orderNo = `RB-${String(order.id).padStart(3, "0")}`;
-    order = await this.orders.save(order);
+    order = await orderRepo.save(order);
 
     /*
      * The order now has an ID.
@@ -162,7 +165,7 @@ export class StoreService {
         );
       }
 
-      return this.orderItems.create({
+      return itemRepo.create({
         order,
         product,
         quantity: item.quantity,
@@ -170,13 +173,20 @@ export class StoreService {
       });
     });
 
-    await this.orderItems.save(lines);
+    await itemRepo.save(lines);
+    await manager.getRepository(Notification).save({
+      title: "New order " + order.orderNo,
+      message: (customer.companyName || "Customer shop").slice(0, 180) + " placed " + order.orderNo,
+      type: NotificationType.INFO,
+      recipientRole: Role.ORDER_ADMIN,
+      isRead: false,
+    });
 
     /*
      * Return the completed order with customer
      * and items.
      */
-    return this.orders.findOneOrFail({
+    return orderRepo.findOneOrFail({
       where: {
         id: order.id,
       },
@@ -186,6 +196,7 @@ export class StoreService {
           product: true,
         },
       },
+    });
     });
   }
 

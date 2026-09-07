@@ -144,6 +144,9 @@ export class Order {
   @Column({ name: "order_date", type: "date" })
   orderDate: string;
 
+  @CreateDateColumn({ name: "created_at", type: "datetime", nullable: true })
+  createdAt: Date | null;
+
   @Column({ type: "enum", enum: OrderStatus, default: OrderStatus.ACCEPTED })
   status: OrderStatus;
 
@@ -181,6 +184,9 @@ export enum NotificationType {
 export class Notification {
   @PrimaryGeneratedColumn()
   id: number;
+
+  @Column({ name: "recipient_role", type: "varchar", length: 30, default: Role.ADMIN })
+  recipientRole: Role;
 
   @Column()
   title: string;

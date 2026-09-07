@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Box,
+  Download,
   CalendarDays,
+  CalendarRange,
+  PackageCheck,
   ChevronLeft,
   ChevronRight,
   Eye,
   Pencil,
   Plus,
   Printer,
+  RefreshCw,
   Save,
   Search,
   Trash2,
@@ -27,14 +32,22 @@ const total = (o: Order) =>
 export function Orders({
   view,
   selectedCustomerId = null,
+  refresh = 0,
+  onDataLoaded,
   setModal,
   setToast,
 }: {
   view: "orders" | "customers";
   selectedCustomerId?: number | null;
+  refresh?: number;
+  onDataLoaded?: (orders: Order[], customers: Customer[]) => void;
   setModal: (v: string | null) => void;
   setToast: (v: ToastState) => void;
 }) {
+  const [summaryTarget, setSummaryTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setSummaryTarget(document.getElementById("order-summary"));
+  }, []);
   const [orders, setOrders] = useState<Order[]>([]),
     [customers, setCustomers] = useState<Customer[]>([]),
     [products, setProducts] = useState<Product[]>([]);
@@ -46,22 +59,41 @@ export function Orders({
     [customerView, setCustomerView] = useState<Customer | null>(null),
     [customerEdit, setCustomerEdit] = useState<Customer | null>(null),
     [exportOpen, setExportOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
-  const load = () =>
-    Promise.all([
-      request("/orders"),
-      request("/customers"),
-      request("/products"),
-    ]).then(([o, c, p]) => {
-      setOrders(o);
-      setCustomers(c);
-      setProducts(p);
-    });
+  const load = async () => {
+    const paths = ["/orders", "/customers", "/products"];
+    const results = await Promise.allSettled(paths.map(path => request(path)));
+    const [orderResult, customerResult, productResult] = results;
+    const loadedOrders: Order[] = orderResult.status === "fulfilled" ? orderResult.value : orders;
+    const loadedCustomers: Customer[] = customerResult.status === "fulfilled" ? customerResult.value : customers;
+    if (orderResult.status === "fulfilled") setOrders(loadedOrders);
+    if (customerResult.status === "fulfilled") setCustomers(loadedCustomers);
+    if (productResult.status === "fulfilled") setProducts(productResult.value);
+    onDataLoaded?.(loadedOrders, loadedCustomers);
+    const failures = results.flatMap((result, index) => result.status === "rejected"
+      ? [paths[index] + ": " + (result.reason instanceof Error ? result.reason.message : "Request failed")]
+      : []);
+    if (failures.length) throw new Error(failures.join("; "));
+  };
+  async function refreshData() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await load();
+      setPage(1);
+      setToast({ type: "success", message: "Orders and customers refreshed successfully" });
+    } catch (error) {
+      setToast({ type: "error", message: error instanceof Error ? error.message : "Unable to refresh data." });
+    } finally {
+      setRefreshing(false);
+    }
+  }
   useEffect(() => {
-    load().catch(() =>
-      setToast({ type: "error", message: "Order data could not be loaded" }),
+    load().catch((error) =>
+      setToast({ type: "error", message: error instanceof Error ? error.message : "Order data could not be loaded" }),
     );
-  }, []);
+  }, [refresh]);
   useEffect(() => {
     const run = () => setExportOpen(true);
     window.addEventListener("export-orders", run);
@@ -114,6 +146,7 @@ export function Orders({
             o.customer?.phoneNumber,
             o.customer?.tinNumber,
             o.customer?.address,
+            o.customer?.companyName,
             o.orderDate,
             o.status,
           ]
@@ -128,7 +161,7 @@ export function Orders({
       customers.filter(
         (c) =>
           (activeCustomerId === null || c.id === activeCustomerId) &&
-          [c.name, c.address, c.tinNumber, c.phoneNumber, c.whatsappNumber]
+          [c.companyName, c.address, c.tinNumber, c.phoneNumber, c.whatsappNumber]
             .join(" ")
             .toLowerCase()
             .includes(query.trim().toLowerCase()),
@@ -139,7 +172,6 @@ export function Orders({
     pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE)),
     visible = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const stats = {
-    customers: customers.length,
     today: orders.filter(
       (o) => o.orderDate === new Date().toISOString().slice(0, 10),
     ).length,
@@ -292,29 +324,38 @@ export function Orders({
   }
   return (
     <>
-      <div className="stats order-stats">
+      {summaryTarget && createPortal(<div className="order-stats">
         {[
-          [stats.customers, "Total Customers"],
-          [stats.today, "Today Received"],
-          [stats.week, "Weekly Orders"],
-          [stats.month, "Monthly Orders"],
-        ].map(([n, l]) => (
-          <div key={String(l)}>
-            <Users />
-            <b>{n}</b>
-            <span>{l}</span>
+          { value: stats.today, label: "Today Received", Icon: PackageCheck },
+          { value: stats.week, label: "Weekly Orders", Icon: CalendarRange },
+          { value: stats.month, label: "Monthly Orders", Icon: CalendarDays },
+        ].map(({ value, label, Icon }) => (
+          <div key={label}>
+            <Icon aria-hidden="true" />
+            <b>{value}</b>
+            <span>{label}</span>
           </div>
         ))}
-      </div>
+      </div>, summaryTarget)}
       <section className="panel order-panel">
         <div className="panel-heading order-heading">
-          <div>
-            <h2>{view === "orders" ? "Order Details" : "Customer Details"}</h2>
-            <p>
-              {rows.length} {view} found
-            </p>
-          </div>
+          <h2>{view === "orders" ? "Order Details" : "Customer Details"}</h2>
           <div className="order-tools">
+            <button
+              type="button"
+              className="order-refresh"
+              onClick={refreshData}
+              disabled={refreshing}
+              aria-label={view === "orders" ? "Refresh orders" : "Refresh customers"}
+              aria-busy={refreshing}
+            >
+              <RefreshCw className={refreshing ? "spin" : undefined} aria-hidden="true" />
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </button>
+                <button type="button" className="green" onClick={() => setExportOpen(true)}>
+                  <Download />
+                  Download
+                </button>
             {view === "orders" && (
               <>
                 <label className="month-filter">
@@ -346,10 +387,7 @@ export function Orders({
             )}
             {view === "customers" && (
               <>
-                <span className="entry-count">
-                  <Users />
-                  20 Entry / Page
-                </span>
+
                 <button
                   className="primary"
                   onClick={() => setModal("customer")}
@@ -369,7 +407,7 @@ export function Orders({
             placeholder={
               view === "orders"
                 ? "Search orders by ID, customer, phone, date, status..."
-                : "Search customers by name, address, TIN, phone..."
+                : "Search customers by shop name, address, TIN or phone..."
             }
           />
           {query && (
@@ -382,29 +420,36 @@ export function Orders({
           {view === "orders" ? (
             <div className="data-table order-table">
               <div className="data-head">
-                <span>S.NO</span>
+                <span className="text-center">S.NO</span>
                 <span>ORDER ID</span>
-                <span>CUSTOMER DETAILS</span>
-                <span>DATE</span>
+                <span className="text-center">CUSTOMER DETAILS</span>
+                <span className="text-padding">DATE</span>
                 <span>ITEMS</span>
                 <span>AMOUNT</span>
-                <span>STATUS</span>
-                <span>ACTION</span>
+                <span className="text-center">STATUS</span>
+                <span className="text-center">ACTION</span>
               </div>
               {(visible as Order[]).map((o, i) => (
                 <div className="data-row" key={o.id}>
                   <b className="serial">{(page - 1) * PAGE_SIZE + i + 1}</b>
-                  <strong className="order-id">{o.orderNo}</strong>
+                  <strong className="order-id text-padding">{o.orderNo}</strong>
                   <div className="customer-cell">
-                    <strong>{o.customer?.name}</strong>
+                    <strong>{o.customer?.companyName?.trim() || "Shop name not provided"}</strong>
                     <small>{o.customer?.phoneNumber || "—"}</small>
                     <small className="address-text">
                       {formatAddress(o.customer?.address)}
                     </small>
                     <small>TIN: {o.customer?.tinNumber || "—"}</small>
                   </div>
-                  <span>{o.orderDate}</span>
-                  <span>{o.items.length}</span>
+                  <span>
+                    {o.orderDate}
+                    <small style={{ display: "block", color: "#64748b", marginTop: 4 }}>
+                      {o.createdAt && !Number.isNaN(new Date(o.createdAt).getTime())
+                        ? new Date(o.createdAt).toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: true })
+                        : "Time unavailable"}
+                    </small>
+                  </span>
+                  <span className="text-padding">{o.items.length}</span>
                   <b>{money(total(o))}</b>
                   <div className={`status-select-wrap ${o.status.toLowerCase()}`}>
                     <select
@@ -451,17 +496,17 @@ export function Orders({
             <div className="data-table customer-table">
               <div className="data-head">
                 <span>S.NO</span>
-                <span>NAME</span>
+                <span>Business / Company / Shop Name</span>
                 <span>ADDRESS</span>
-                <span>TIN NUMBER</span>
-                <span>PHONE NUMBER</span>
-                <span>WHATSAPP NUMBER</span>
-                <span>ACTION</span>
+                <span className="text-padding">TIN</span>
+                <span className="text-padding">PHONE</span>
+                <span>WHATSAPP</span>
+                <span className="text-center">ACTION</span>
               </div>
               {(visible as Customer[]).map((c, i) => (
                 <div className="data-row" key={c.id}>
                   <b className="serial">{(page - 1) * PAGE_SIZE + i + 1}</b>
-                  <strong className="order-id">{c.name}</strong>
+                  <strong className="order-id">{c.companyName?.trim() || "Shop name not provided"}</strong>
                   <span className="address-text">
                     {formatAddress(c.address)}
                   </span>
@@ -832,7 +877,7 @@ function CustomerDetailsModal({
   }
   const fields = [
     ["name", "Name"],
-    ["companyName", "Company Name"],
+    ["companyName", "Business / Company / Shop Name"],
     ["address", "Address"],
     ["tinNumber", "TIN Number"],
     ["phoneNumber", "Phone Number"],
@@ -982,19 +1027,19 @@ function ModifyOrder({
   );
 
   const [orderQuery, setOrderQuery] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const [removeOrders, setRemoveOrders] = useState<number[]>([]);
   const [productQuery, setProductQuery] = useState("");
-  const [removeItems, setRemoveItems] = useState<number[]>([]);
 
   const shownOrders = orders.filter((order) =>
     [
       order.orderNo,
-      order.customer?.name,
+      order.customer?.companyName,
       order.customer?.phoneNumber,
     ]
       .join(" ")
       .toLowerCase()
-      .includes(orderQuery.toLowerCase()),
+      .includes(orderQuery.trim().toLowerCase()),
   );
 
   const choose = (order: Order) => {
@@ -1003,22 +1048,22 @@ function ModifyOrder({
       ...order,
       items: order.items.map((item) => ({ ...item })),
     });
-    setRemoveItems([]);
   };
 
   const deleteIds = async (ids: number[]) => {
     if (!ids.length) return;
     if (!confirm(`Remove ${ids.length} order${ids.length > 1 ? "s" : ""}?`)) return;
 
-    await Promise.all(
-      ids.map((id) => request(`/orders/${id}`, { method: "DELETE" })),
-    );
-    setRemoveOrders([]);
-    if (selected && ids.includes(selected.id)) {
-      setSelected(null);
-      setDraft(null);
-    }
-    changed();
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      const results = await Promise.allSettled(ids.map(id => request("/orders/" + id, { method: "DELETE" })));
+      const deleted = ids.filter((_, index) => results[index].status === "fulfilled");
+      setRemoveOrders(current => current.filter(id => !deleted.includes(id)));
+      if (selected && deleted.includes(selected.id)) { setSelected(null); setDraft(null); }
+      if (deleted.length) changed();
+      if (deleted.length !== ids.length) alert("Some orders could not be deleted. Please retry the remaining selection.");
+    } finally { setDeleting(false); }
   };
 
   const matches = products
@@ -1035,6 +1080,10 @@ function ModifyOrder({
       return;
     }
 
+    if (!draft.items.length || draft.items.some(item => !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0)) {
+      alert("Add at least one product and enter a quantity greater than zero.");
+      return;
+    }
     try {
       await request(`/orders/${draft.id}`, {
         method: "PATCH",
@@ -1064,9 +1113,6 @@ function ModifyOrder({
         <header>
           <div>
             <h2>Modify Order</h2>
-            <p>
-              Search an order and modify its date or products.
-            </p>
           </div>
           <button className="modal-x" onClick={close}>
             <X />
@@ -1091,60 +1137,38 @@ function ModifyOrder({
                 <input
                   value={orderQuery}
                   onChange={(e) => setOrderQuery(e.target.value)}
-                  placeholder="Search order ID / customer / phone"
+                  placeholder="Search order ID, Business / Company / Shop Name..."
                 />
               </label>
-              <div className="select-order-list">
-                {shownOrders.map((o) => (
-                  <label key={o.id}>
-                    <input
-                      type="radio"
-                      checked={selected?.id === o.id}
-                      onChange={() => choose(o)}
-                    />
-                    <span>
+              <div className="order-bulk-actions">
+                <button type="button" disabled={!shownOrders.length} onClick={() => {
+                  const ids = shownOrders.map(o => o.id);
+                  setRemoveOrders(current => ids.every(id => current.includes(id))
+                    ? current.filter(id => !ids.includes(id))
+                    : Array.from(new Set([...current, ...ids])));
+                }}>Select / Clear All</button>
+                <button type="button" disabled={!removeOrders.length || deleting} onClick={() => deleteIds(removeOrders)}>
+                  <Trash2 /> {deleting ? "Deleting..." : "Delete Selected (" + removeOrders.length + ")"}
+                </button>
+              </div>
+              <div className="order-choice-list">
+                {shownOrders.map(o => (
+                  <div className={selected?.id === o.id ? "active" : ""} key={o.id}>
+                    <input type="checkbox" aria-label={"Select " + o.orderNo + " for deletion"}
+                      checked={removeOrders.includes(o.id)}
+                      onChange={e => setRemoveOrders(current => e.target.checked ? [...current, o.id] : current.filter(id => id !== o.id))} />
+                    <button type="button" onClick={() => choose(o)} aria-pressed={selected?.id === o.id}>
                       <b>{o.orderNo}</b>
                       <small>
-                        {o.customer?.name} • {o.orderDate}
+                        {o.customer?.companyName || "Shop name not provided"} | {displayDate(o.orderDate)}
+                        {o.createdAt && !Number.isNaN(new Date(o.createdAt).getTime())
+                          ? " " + new Date(o.createdAt).toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: true })
+                          : ""}
                       </small>
-                    </span>
-                  </label>
+                    </button>
+                  </div>
                 ))}
-              </div>
-              <div className="remove-orders">
-                <h4>Remove Orders</h4>
-                <button onClick={() => selected && deleteIds([selected.id])}>
-                  <Trash2 />
-                  Remove This Order
-                </button>
-                <div className="remove-order-list">
-                  {orders.map((o) => (
-                    <label key={o.id}>
-                      <input
-                        type="checkbox"
-                        checked={removeOrders.includes(o.id)}
-                        onChange={(e) =>
-                          setRemoveOrders(
-                            e.target.checked
-                              ? [...removeOrders, o.id]
-                              : removeOrders.filter((id) => id !== o.id),
-                          )
-                        }
-                      />
-                      <span>
-                        <b>{o.orderNo}</b>
-                        <small>{o.customer?.name}</small>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <button
-                  disabled={!removeOrders.length}
-                  onClick={() => deleteIds(removeOrders)}
-                >
-                  <Trash2 />
-                  Remove Selected Orders
-                </button>
+                {!shownOrders.length && <p>No matching orders</p>}
               </div>
             </aside>
             <section>
@@ -1160,32 +1184,17 @@ function ModifyOrder({
                     <Eye />
                     Order Details
                   </h3>
-                  <div className="order-fields">
-                    <label>
-                      CUSTOMER
-                      <input value={draft.customer.name} readOnly />
-                    </label>
-                    <label>
-                      PHONE
-                      <input
-                        value={draft.customer.phoneNumber || ""}
-                        readOnly
-                      />
-                    </label>
-                    <label>
-                      DATE
-                      <input
-                        value={displayDate(draft.orderDate)}
-                        readOnly
-                      />
-                    </label>
+                  <div className="modify-order-summary">
+                    <div><small>BUSINESS / COMPANY / SHOP NAME</small><strong>{draft.customer.companyName || "Shop name not provided"}</strong></div>
+                    <div><small>PHONE</small><strong>{draft.customer.phoneNumber || "—"}</strong></div>
+                    <div><small>DATE / TIME (UTC+8)</small><strong>{displayDate(draft.orderDate)} {draft.createdAt && !Number.isNaN(new Date(draft.createdAt).getTime()) ? new Date(draft.createdAt).toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: true }) : ""}</strong></div>
                   </div>
                   <label className="product-search">
                     <Search />
                     <input
                       value={productQuery}
                       onChange={(e) => setProductQuery(e.target.value)}
-                      placeholder="Search product to add..."
+                      placeholder="Search product code or description to add..."
                     />
                   </label>
                   {productQuery && (
@@ -1218,26 +1227,16 @@ function ModifyOrder({
                   )}
                   <div className="modify-items">
                     <div className="modify-head">
-                      <span></span>
                       <span>Product</span>
                       <span>UOM</span>
                       <span>Qty</span>
-                      <span>Price</span>
+                      <span>Amount</span>
                       <span>Action</span>
                     </div>
+                    <div className="modify-item-rows">
                     {draft.items.map((i, idx) => (
                       <div className="modify-item" key={i.id}>
-                        <input
-                          type="checkbox"
-                          checked={removeItems.includes(i.id)}
-                          onChange={(e) =>
-                            setRemoveItems(
-                              e.target.checked
-                                ? [...removeItems, i.id]
-                                : removeItems.filter((id) => id !== i.id),
-                            )
-                          }
-                        />
+
                         <div>
                           <b>{i.product.code}</b>
                           <small>{i.product.description}</small>
@@ -1257,7 +1256,7 @@ function ModifyOrder({
                             setDraft({ ...draft, items });
                           }}
                         />
-                        <span>{money(Number(i.unitPrice))}</span>
+                        <span>{money(Number(i.quantity) * Number(i.unitPrice))}</span>
                         <button
                           onClick={() =>
                             setDraft({
@@ -1270,23 +1269,10 @@ function ModifyOrder({
                         </button>
                       </div>
                     ))}
+                    </div>
                   </div>
-                  <button
-                    className="remove-selected-products"
-                    disabled={!removeItems.length}
-                    onClick={() => {
-                      setDraft({
-                        ...draft,
-                        items: draft.items.filter(
-                          (i) => !removeItems.includes(i.id),
-                        ),
-                      });
-                      setRemoveItems([]);
-                    }}
-                  >
-                    <Trash2 />
-                    Remove Selected Products
-                  </button>
+                  <p className="modify-total">Order Total: {money(total(draft))}</p>
+
                 </>
               )}
             </section>

@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Req,
   Injectable,
   Param,
   ParseIntPipe,
@@ -41,26 +42,27 @@ export class FeaturesService {
     private designs: Repository<DesignSetting>,
   ) {}
 
-  listNotifications() {
+  listNotifications(role: Role) {
     return this.notifications.find({
+      where: { recipientRole: role },
       order: { createdAt: "DESC" },
       take: 20,
     });
   }
 
-  unreadCount() {
+  unreadCount(role: Role) {
     return this.notifications
-      .count({ where: { isRead: false } })
+      .count({ where: { isRead: false, recipientRole: role } })
       .then((count) => ({ count }));
   }
 
-  async readNotification(id: number) {
-    await this.notifications.update(id, { isRead: true });
+  async readNotification(id: number, role: Role) {
+    await this.notifications.update({ id, recipientRole: role }, { isRead: true });
     return { success: true };
   }
 
-  async readAll() {
-    await this.notifications.update({ isRead: false }, { isRead: true });
+  async readAll(role: Role) {
+    await this.notifications.update({ isRead: false, recipientRole: role }, { isRead: true });
     return { success: true };
   }
 
@@ -217,23 +219,23 @@ export class FeaturesController {
   constructor(private service: FeaturesService) {}
 
   @Get("notifications")
-  notifications() {
-    return this.service.listNotifications();
+  notifications(@Req() req: { user: { role: Role } }) {
+    return this.service.listNotifications(req.user.role);
   }
 
   @Get("notifications/unread-count")
-  count() {
-    return this.service.unreadCount();
+  count(@Req() req: { user: { role: Role } }) {
+    return this.service.unreadCount(req.user.role);
   }
 
   @Patch("notifications/read-all")
-  readAll() {
-    return this.service.readAll();
+  readAll(@Req() req: { user: { role: Role } }) {
+    return this.service.readAll(req.user.role);
   }
 
   @Patch("notifications/:id/read")
-  read(@Param("id", ParseIntPipe) id: number) {
-    return this.service.readNotification(id);
+  read(@Param("id", ParseIntPipe) id: number, @Req() req: { user: { role: Role } }) {
+    return this.service.readNotification(id, req.user.role);
   }
 
   @Post("products/import-price")
