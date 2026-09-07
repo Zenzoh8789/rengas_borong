@@ -1,19 +1,29 @@
-import { ValidationPipe } from "@nestjs/common";
-import { NestFactory } from "@nestjs/core";
-import {
-  ExpressAdapter,
-  NestExpressApplication,
-} from "@nestjs/platform-express";
+
+
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import cookieParser = require("cookie-parser");
 import express = require("express");
 import { join } from "path";
-import { AppModule } from "./app.module";
+
 import { getUploadDirectory } from "./storage";
 
 const expressApp = express();
 const port = Number(process.env.PORT) || 3000;
 
+let ready = false;
+expressApp.use((req, res, next) => {
+  if (ready) return next();
+  res.setHeader("Retry-After", "3");
+  res.status(503).json({ message: "Application is starting. Please retry shortly." });
+});
+const server = expressApp.listen(port, "0.0.0.0");
+server.on("error", error => { console.error("Unable to bind server:", error); process.exit(1); });
+
 async function bootstrap() {
+  const { NestFactory } = await import("@nestjs/core");
+  const { ExpressAdapter } = await import("@nestjs/platform-express");
+  const { ValidationPipe } = await import("@nestjs/common");
+  const { AppModule } = await import("./app.module");
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule,
     new ExpressAdapter(expressApp),
@@ -56,9 +66,11 @@ async function bootstrap() {
     }),
   );
 
-  // Nest initializes all modules (including the database) before opening the
-  // socket, so deployment health checks cannot receive a false success.
-  await app.listen(port, "0.0.0.0");
+  await app.init();
+  ready = true;
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    process.once(signal, () => { ready = false; server.close(); });
+  }
   console.log(`RENGAS API initialized successfully on port ${port}`);
 }
 
