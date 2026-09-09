@@ -214,6 +214,7 @@ export class StoreService {
   async getOrders(customerId: number) {
   const orders = await this.orders.find({
     where: { customer: { id: customerId } },
+    loadEagerRelations: false,
     relations: {
       customer: true,
       items: {
