@@ -2777,6 +2777,7 @@ aside {
   overflow: hidden;
 }
 .customer-cell small {
+  font-size:14px;
   color: #69778e;
   overflow-wrap: anywhere;
 }
@@ -4981,12 +4982,12 @@ body:has(.backdrop) {
   .modify-order .modify-order-summary > div:nth-child(2) { border-left: 0; }
   .modify-order .modify-order-summary > div { padding-inline: 8px; }
 }
+
 .topbar .notice,
 .topbar .customer-menu-toggle {
   position: relative;
   overflow: visible;
 }
-
 .topbar .notification-dot {
   position: absolute;
   display: block;
@@ -4995,8 +4996,20 @@ body:has(.backdrop) {
   width: 10px;
   height: 10px;
   padding: 0;
-  border: 2px solid #fff;
+  border: 2px solid white;
   border-radius: 50%;
   background: #ef4444;
   pointer-events: none;
+}
+
+/* Wrap order addresses without inserting breaks inside words. */
+.admin-scroll-table .order-table .customer-cell .address-text {
+  display: block;
+  width: 100%;
+  max-width: 33ch;
+  min-width: 0;
+  white-space: pre-line;
+  word-break: normal;
+  overflow-wrap: break-word;
+  line-height: 1.5;
 }

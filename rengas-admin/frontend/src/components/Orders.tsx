@@ -316,11 +316,8 @@ export function Orders({
   }
 
   function formatAddress(address?: string) {
-      if (!address) return "—";
-
-      return address
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/(.{25})/g, "$1\n");
+    if (!address) return "—";
+    return address.replace(/<br\s*\/?>/gi, "\n").trim();
   }
   return (
     <>
@@ -421,7 +418,7 @@ export function Orders({
             <div className="data-table order-table">
               <div className="data-head">
                 <span className="text-center">S.NO</span>
-                <span>ORDER ID</span>
+                <span className="text-padding">ORDER ID</span>
                 <span className="text-center">CUSTOMER DETAILS</span>
                 <span className="text-padding">DATE</span>
                 <span>ITEMS</span>
@@ -431,7 +428,7 @@ export function Orders({
               </div>
               {(visible as Order[]).map((o, i) => (
                 <div className="data-row" key={o.id}>
-                  <b className="serial">{(page - 1) * PAGE_SIZE + i + 1}</b>
+                  <b className="serial"><span>{((page - 1) * PAGE_SIZE + i + 1).toLocaleString("en-IN")}</span></b>
                   <strong className="order-id text-padding">{o.orderNo}</strong>
                   <div className="customer-cell">
                     <strong>{o.customer?.companyName?.trim() || "Shop name not provided"}</strong>
@@ -443,7 +440,7 @@ export function Orders({
                   </div>
                   <span>
                     {o.orderDate}
-                    <small style={{ display: "block", color: "#64748b", marginTop: 4 }}>
+                    <small style={{ display: "block", color: "#64748b", marginTop: 4, fontSize:14}}>
                       {o.createdAt && !Number.isNaN(new Date(o.createdAt).getTime())
                         ? new Date(o.createdAt).toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: true })
                         : "Time unavailable"}
@@ -497,7 +494,7 @@ export function Orders({
               <div className="data-head">
                 <span>S.NO</span>
                 <span>Business / Company / Shop Name</span>
-                <span>ADDRESS</span>
+                <span className="text-center">ADDRESS</span>
                 <span className="text-padding">TIN</span>
                 <span className="text-padding">PHONE</span>
                 <span>WHATSAPP</span>
@@ -505,7 +502,7 @@ export function Orders({
               </div>
               {(visible as Customer[]).map((c, i) => (
                 <div className="data-row" key={c.id}>
-                  <b className="serial">{(page - 1) * PAGE_SIZE + i + 1}</b>
+                  <b className="serial"><span>{((page - 1) * PAGE_SIZE + i + 1).toLocaleString("en-IN")}</span></b>
                   <strong className="order-id">{c.companyName?.trim() || "Shop name not provided"}</strong>
                   <span className="address-text">
                     {formatAddress(c.address)}
@@ -887,10 +884,7 @@ function CustomerDetailsModal({
     <div className="backdrop">
       <div className="modal customer-details-dialog">
         <header>
-          <div>
-            <h2>{editable ? "Edit Customer" : "View Customer"}</h2>
-            <p>Customer full details</p>
-          </div>
+          <h2>{editable ? "Edit Customer" : "View Customer"}</h2>
           <button className="modal-x" onClick={close} aria-label="Close">
             <X />
           </button>

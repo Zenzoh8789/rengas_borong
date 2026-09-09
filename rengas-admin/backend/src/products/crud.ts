@@ -380,7 +380,9 @@ export class CrudService {
     return result;
   }
   async clearProducts() {
-    await this.orderItems.createQueryBuilder().delete().execute();
+    if (await this.orderItems.count()) {
+      throw new BadRequestException("Products are used in order history and cannot be cleared. Order history has been preserved.");
+    }
     const result = await this.products.createQueryBuilder().delete().execute();
 
     await this.notify(

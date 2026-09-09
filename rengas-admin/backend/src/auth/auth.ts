@@ -11,6 +11,7 @@ import {
   Req,
   Res,
   UnauthorizedException,
+  ServiceUnavailableException,
   UseGuards,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -209,6 +210,9 @@ export class AuthService {
   }
 
   async sendCustomerOtp(rawPhoneNumber: string) {
+    if (process.env.NODE_ENV === "production") {
+      throw new ServiceUnavailableException("SMS sign-in is not available yet. Please sign in with your password.");
+    }
     const phoneNumber = normalizePhone(rawPhoneNumber);
     const customer = await this.customers
       .createQueryBuilder("customer")
@@ -435,22 +439,27 @@ export class AuthController {
       : request.cookies?.admin_access_token;
     if (!token) return { authenticated: false, role: null };
 
+    let user: { role: Role; customerId?: number; sub?: number; username?: string };
     try {
-      const user = await this.jwt.verifyAsync(token);
-      const customer = user.role === Role.CUSTOMER && user.customerId
-        ? await this.auth.customerProfile(Number(user.customerId))
-        : null;
-      return {
-        authenticated: true,
-        username: user.username || null,
-        customerId: user.customerId || null,
-        role: user.role,
-        customer,
-      };
+      user = await this.jwt.verifyAsync(token);
     } catch {
       if (authorization === undefined) this.clearAccessCookie(response);
       return { authenticated: false, role: null };
     }
+    if (user.role === Role.CUSTOMER) {
+      const id = Number(user.customerId);
+      if (!Number.isSafeInteger(id) || id < 1 || Number(user.sub) !== id) {
+        return { authenticated: false, role: null };
+      }
+      // Database failures propagate as server errors, not invalid sessions.
+      const customer = await this.auth.customerProfile(id);
+      if (!customer) return { authenticated: false, role: null };
+      return { authenticated: true, username: null, customerId: id, role: user.role, customer };
+    }
+    if (![Role.ADMIN, Role.ORDER_ADMIN].includes(user.role)) {
+      return { authenticated: false, role: null };
+    }
+    return { authenticated: true, username: user.username || null, customerId: null, role: user.role, customer: null };
   }
 
   @Post("logout")

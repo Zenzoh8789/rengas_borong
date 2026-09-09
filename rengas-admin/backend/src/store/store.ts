@@ -23,6 +23,7 @@ import {
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
+import { randomUUID } from "node:crypto";
 import { Repository } from "typeorm";
 import { Customer, Order, OrderItem, OrderStatus, Product, Notification, NotificationType, Role } from "../entities";
 import {
@@ -139,7 +140,7 @@ export class StoreService {
       const itemRepo = manager.getRepository(OrderItem);
     let order = await orderRepo.save(
       orderRepo.create({
-        orderNo: `TEMP-${Date.now()}`,
+        orderNo: `TEMP-${randomUUID()}`,
         orderDate: new Date().toISOString().slice(0, 10),
         status: OrderStatus.ACCEPTED,
         customer,
@@ -200,6 +201,16 @@ export class StoreService {
     });
   }
 
+  async recentOrders(customerId: number) {
+    // QueryBuilder avoids eager customer, item, product and category relations.
+    const orders = await this.orders.createQueryBuilder("order")
+      .select(["order.id", "order.orderNo", "order.orderDate", "order.status"])
+      .where("order.customer_id = :customerId", { customerId })
+      .orderBy("order.orderDate", "DESC").addOrderBy("order.id", "DESC")
+      .take(10).getMany();
+    return orders.map(order => ({ id: order.id, orderNo: order.orderNo, date: order.orderDate, status: order.status }));
+  }
+
   async getOrders(customerId: number) {
   const orders = await this.orders.find({
     where: { customer: { id: customerId } },
@@ -210,6 +221,7 @@ export class StoreService {
       },
     },
     order: {
+      orderDate: "DESC",
       id: "DESC",
     },
   });
@@ -244,6 +256,8 @@ export class StoreService {
       },
       items: order.items.map((item) => ({
         id: item.id,
+        uom: item.product.uom,
+        uomId: item.product.id,
         quantity: Number(item.quantity),
         unitPrice: Number(item.unitPrice),
         amount: Number(item.quantity) * Number(item.unitPrice),
@@ -266,6 +280,12 @@ export class StoreController {
   @Get("products")
   products() {
     return this.store.groupedProducts();
+  }
+
+  @Get("orders/recent")
+  @UseGuards(CustomerAuthGuard)
+  recentOrders(@Req() request: CustomerRequest) {
+    return this.store.recentOrders(request.user!.customerId);
   }
 
   @Get("orders")
