@@ -1,78 +1,52 @@
-# Rengas Admin commands
+# Deploy the cleaned Rengas Admin project
 
-## First-time setup (Windows, macOS, or Linux)
+Use Node.js 22.12+ (Node 24 recommended) and the existing MySQL database.
 
-1. Install Node.js 20 or newer and MySQL 8.
-2. Copy `backend/.env.example` to `backend/.env` and set real secrets.
-   `JWT_SECRET` must be at least 32 random characters. Default values such as
-   `root`, `password`, `dev-secret`, and the example placeholders are rejected.
-   To start the optional local MySQL container with those values, run
-   `docker compose --env-file backend/.env up -d mysql`.
+All .env* files were excluded without reading them. Keep the existing server configuration, database and upload storage when applying this source update. Do not overwrite them with empty files. Configuration can be supplied as process/hosting environment variables; no .env file is required when these variables are supplied externally.
 
-The application checks environment files in this order:
+Required backend variable names, taken from source validation: DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, JWT_SECRET. JWT_SECRET must be at least 32 characters. Retain any other deployment settings already configured, including CORS and UPLOAD_DIR. Never set VITE_* variables to secret values.
 
-1. `ENV_FILE`, when explicitly set (absolute or relative to the working directory).
-2. `backend/.env`, used by root `npm start` and PM2 deployments.
-3. `.env`, used by backend-only commands started inside `backend`.
+From the project root:
 
-Existing operating-system environment variables take precedence over file values.
-3. Install dependencies:
-
-```sh
-npm run install:all
 ```
-
-For an existing database created before Step 10, apply the idempotent performance
-indexes once (back up the database first):
-
-```sh
-mysql -u YOUR_DB_USER -p YOUR_DB_NAME < database/step10-performance-indexes.sql
-```
-
-New databases created from `database/schema.sql` already include these indexes.
-
-4. Start frontend and backend together:
-
-```sh
-npm run dev
-```
-
-Frontend: `http://localhost:5173`  
-Backend: `http://localhost:3000/api`
-
-## Production build
-
-```sh
+npm ci
 npm run build
+npm start
 ```
 
-The frontend output is in `frontend/dist` and the backend output is in
-`backend/dist`.
+npm ci installs backend and frontend dependencies through postinstall. The production build emits dist/main.js and dist/public. Restart the existing process manager instead of launching an extra server if the application already runs as a managed service.
 
-## VPS restart with PM2
+To run the backend regression tests separately:
 
-From the project directory:
-
-```sh
-npm run build
-pm2 restart rengas-backend --update-env
+```
+npm --prefix backend test
 ```
 
-The HTTP port opens only after Nest and MySQL initialize successfully. Configure
-the process manager or hosting platform startup grace period to allow database
-connection retries; a closed port during initialization means the service is not
-ready and must not receive traffic.
+The tests use mock product repositories; no database connection or environment credentials are needed.
 
-Serve `frontend/dist` through Nginx and proxy `/api` plus `/uploads` to
-`http://127.0.0.1:3000`.
+## This release
 
-For production uploads, set `UPLOAD_DIR` to a persistent directory outside
-`dist`, for example `/var/www/rengas-admin/shared/uploads`. The same directory
-must be used by the application and the Nginx `/uploads/` alias. See
-`UPDATED_CHANGES.md` for the complete configuration and migration steps.
+The store API no longer groups product rows by a stripped description. Every SKU has its own ID, full description, price, image and selling UOM. Existing customer clients can still read the response because each entry retains a single-element uoms array. Deploy this backend before the accompanying customer frontend.
 
-## Responsive validation widths
+The catalog PDF inclusion toggle retains its existing PDF-only meaning. No product or category records are automatically changed. No database migration is required for the catalog visibility fix. The old upgrade script no longer inserts the unrelated FRONTEND/BACKEND placeholder categories; it does not remove any already-existing categories.
 
-Test the browser at 360, 390, 480, 768, 820, 1024, 1280, 1440, and 1920 pixels.
-The CSS includes touch-sized controls, mobile product cards, tablet navigation,
-safe-area handling, dynamic viewport height, and reduced-motion support.
+## Verification after deployment
+
+- With the audited database unchanged, customer category SKU counts should be 34, 244, 1519, 363, 208, 116 and 67, totaling 2551.
+- Search for AGKU001 and confirm AGAL VILAKU WHITE (S) 800'S at RM120.00. AGW5 remains a separate 500'S pack at RM75.00.
+- Confirm 18FRR and 18RO are separate products even though their descriptions and prices match.
+- Check the selected SKU and quantity in the cart. Refresh a product detail URL directly.
+- Correct the existing product/category assignments against the business master list. The code cannot infer a reliable mapping from the project ZIPs.
+
+Source cleanup excludes old build folders, dependency folders, caches, logs, obsolete release notes and .env* files. Uploaded images and database scripts are retained because they may still be needed. The production website has not been deployed by this package preparation.
+## Local versus deployment configuration
+
+Set NODE_ENV=development for local use. Only when DB_HOST is localhost, 127.0.0.1 or ::1 does development mode allow database passwords from the default-password blocklist. A password is still required and must match MySQL. This setting does not create an account or change any database password.
+
+Set NODE_ENV=production for deployment. Production, missing NODE_ENV, other modes and non-loopback database hosts retain the default-password rejection. JWT_SECRET must remain at least 32 characters and non-placeholder in every mode.
+
+Local backend configuration: NODE_ENV=development, DB_HOST=127.0.0.1, DB_PORT=3307 for the supplied Docker mapping, plus your existing DB_USER, DB_PASSWORD, DB_NAME and JWT_SECRET.
+
+Production configuration: NODE_ENV=production and the production database host, port, credentials and JWT secret. Keep configuration on the deployment host; no .env files are included in the source ZIP.
+
+Environment-mode update verified by TypeScript compilation and 10 passing regression tests (six environment tests plus four catalog tests).

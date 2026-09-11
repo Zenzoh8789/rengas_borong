@@ -40,17 +40,17 @@ adding more code to `App.tsx`.
 
 ## Quick start
 
-Requirements: Node.js 20+, Docker Desktop.
+Requirements: Node.js 22.12+ (Node 24 recommended), MySQL 8. See DEPLOYMENT.md for the current source update and configuration instructions.
 
 ```bash
 docker compose up -d
-copy backend\.env.example backend\.env
+# Configure backend variables through the terminal or hosting platform (see DEPLOYMENT.md).
 npm install
 npm run install:all
 npm run dev
 ```
 
-Open `http://localhost:5173`.
+Open `http://localhost:5174`.
 
 API runs at `http://localhost:3000/api`; Adminer runs at `http://localhost:8080`.
 

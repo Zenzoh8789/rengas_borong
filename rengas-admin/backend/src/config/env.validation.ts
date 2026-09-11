@@ -37,7 +37,12 @@ export function validateEnvironment(
   const databasePassword = String(input.DB_PASSWORD).trim();
   const jwtSecret = String(input.JWT_SECRET).trim();
 
-  if (UNSAFE_VALUES.has(databasePassword.toLowerCase())) {
+  // Only an explicitly local development database may use a default password.
+  // Missing NODE_ENV, production, test and remote hosts retain strict validation.
+  const localDevelopment = input.NODE_ENV === "development" &&
+    ["localhost", "127.0.0.1", "::1"].includes(String(input.DB_HOST).trim().toLowerCase());
+
+  if (!localDevelopment && UNSAFE_VALUES.has(databasePassword.toLowerCase())) {
     throw new Error("DB_PASSWORD must not use a default or placeholder value.");
   }
 

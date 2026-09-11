@@ -68,45 +68,25 @@ export class StoreService {
     @InjectRepository(OrderItem) private orderItems: Repository<OrderItem>,
   ) {}
 
-  private splitProductVariant(description: string) {
-    const value = description.trim();
-    const variantPattern =
-      /\s+(\d+(?:\.\d+)?\s*(?:KG|KGS|G|GM|GMS|ML|L|LTR|LTRS|PCS?|PKTS?|PACKS?|BOX(?:ES)?|CTNS?|BAGS?|BOTTLES?|TINS?|['’]S)(?:\s*[Xx*]\s*\d+(?:\.\d+)?\s*(?:KG|KGS|G|GM|GMS|ML|L|LTR|LTRS|PCS?|PKTS?))?(?:\s*\([^)]*\))?)$/i;
-    const match = value.match(variantPattern);
-    if (!match) return { name: value, variant: "" };
-    return {
-      name: value.slice(0, match.index).trim(),
-      variant: match[1].replace(/\s+/g, " ").toUpperCase(),
-    };
-  }
-
-  async groupedProducts() {
-    const rows = await this.products.find({ order: { description: "ASC" } });
-    const groups = new Map<string, any>();
-    for (const row of rows) {
-      const parsed = this.splitProductVariant(row.description);
-      const key = `${row.category?.id || 0}:${parsed.name.toUpperCase()}`;
-      if (!groups.has(key))
-        groups.set(key, {
-          id: row.id,
-          code: row.code,
-          name: parsed.name,
-          subtitle: "",
-          category: row.category,
-          imageUrl: row.imageUrl,
-          uoms: [],
-        });
-      if (!groups.get(key).imageUrl && row.imageUrl)
-        groups.get(key).imageUrl = row.imageUrl;
-      groups.get(key).uoms.push({
+  async listProducts() {
+    const rows = await this.products.find({ order: { description: "ASC", id: "ASC" } });
+    // A database product is an orderable SKU. Never collapse pack sizes or
+    // duplicate descriptions: cards, detail URLs and checkout all use its ID.
+    return rows.map((row) => ({
+      id: row.id,
+      code: row.code,
+      name: row.description,
+      subtitle: "",
+      category: row.category,
+      imageUrl: row.imageUrl,
+      uoms: [{
         id: row.id,
         productId: row.id,
-        name: parsed.variant || row.uom,
+        name: row.uom,
         price: Number(row.price),
         pack: `${row.uom} • ${row.code}`,
-      });
-    }
-    return [...groups.values()];
+      }],
+    }));
   }
 
   async createOrder(customerId: number, input: CreateStoreOrderDto) {
@@ -280,7 +260,7 @@ export class StoreController {
 
   @Get("products")
   products() {
-    return this.store.groupedProducts();
+    return this.store.listProducts();
   }
 
   @Get("orders/recent")

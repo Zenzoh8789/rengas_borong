@@ -1,7 +1,6 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, Box, CheckCircle2, Cloud, Download, Eye, FileText, Image as ImageIcon, LogOut, PackagePlus, Palette, Pencil, Plus, RefreshCw, Save, Search, ShieldCheck, Trash2, Upload, Users, X, XCircle } from "lucide-react";
-import { API, request } from "../api/client";
-import type { Category, Customer, Product, Role, ToastState } from "../types";
+import { CheckCircle2,X,XCircle } from "lucide-react";
+import { useEffect } from "react";
+import type { ToastState } from "../types";
 
 
 export function Toast({ toast, onClose }: { toast: ToastState; onClose: () => void }) {

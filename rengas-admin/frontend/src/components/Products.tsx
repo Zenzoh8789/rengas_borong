@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
 import {
-  Box,
-  Eye,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Search,
-  Trash2,
+Box,
+Eye,
+Pencil,
+Plus,
+RefreshCw,
+Search,
+Trash2,
 } from "lucide-react";
+import { useEffect,useMemo,useState } from "react";
 import { request } from "../api/client";
 import type { Product } from "../types";
-import { ProductView } from "./ProductView";
 import { EditProduct } from "./EditProduct";
+import { ProductView } from "./ProductView";
 
 const PAGE_SIZE = 20;
 

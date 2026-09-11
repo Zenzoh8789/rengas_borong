@@ -6,3 +6,8 @@ dist/
 backend/.env
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+.env*
+coverage/
+.cache/
+*.tsbuildinfo

@@ -1,20 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
 import {
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  X,
+ChevronLeft,
+ChevronRight,
+Search,
+X,
 } from "lucide-react";
+import { useEffect,useMemo,useState } from "react";
 import { request } from "../api/client";
-import type { Category, Customer, Order, Role, ToastState } from "../types";
-import { Topbar } from "./Topbar";
-import { Products } from "./Products";
+import type { Category,Customer,Order,Role,ToastState } from "../types";
+import { Catalogue } from "./Catalogue";
+import { CustomerModal } from "./CustomerModal";
+import { Design } from "./Design";
 import { Orders } from "./Orders";
 import { ProductModal } from "./ProductModal";
-import { CustomerModal } from "./CustomerModal";
-import { Catalogue } from "./Catalogue";
-import { Design } from "./Design";
+import { Products } from "./Products";
 import { Toast } from "./Toast";
+import { Topbar } from "./Topbar";
 
 export function Shell({
   role,

@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { useEffect,useState } from "react";
 import { request } from "./api/client";
 import { Login } from "./components/Login";
 import { Shell } from "./components/Shell";
-import type { Role, ToastState } from "./types";
+import type { Role,ToastState } from "./types";
 
 export default function App() {
   const [role, setRole] = useState<Role | null>(null);

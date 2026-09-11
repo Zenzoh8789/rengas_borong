@@ -21,9 +21,7 @@ VALUES (1);
 -- Ensure required default categories exist.
 INSERT IGNORE INTO categories (name)
 VALUES
-  ('OTHERS'),
-  ('FRONTEND'),
-  ('BACKEND');
+  ('OTHERS');
 
 -- Allow long image paths and hosted image URLs.
 ALTER TABLE products
