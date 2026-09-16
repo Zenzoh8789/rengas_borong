@@ -1,4 +1,10 @@
 export const API = "/api";
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 export async function request(path: string, options?: RequestInit) {
   const response = await fetch(API + path, {
     ...options,
@@ -11,7 +17,7 @@ export async function request(path: string, options?: RequestInit) {
       : response.status === 502 || response.status === 503 ? "Backend unavailable. Check the backend terminal and proxy URL."
       : response.status >= 500 ? "Server error. Check the backend terminal for the database or API error."
       : "Request failed.";
-    throw new Error("HTTP " + response.status + ". " + hint);
+    throw new ApiError(response.status, "HTTP " + response.status + ". " + hint);
   }
   return response.json();
 }

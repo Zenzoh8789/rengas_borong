@@ -140,3 +140,18 @@ product images. The PDF includes:
 
 If a category contains more than nine products, additional pages are created
 automatically. Products without an image use a neutral placeholder.
+
+## Repair local development logins
+
+Existing MySQL volumes keep their account records. Changing DB_PASSWORD only changes the application's database connection; it does not reset website passwords.
+
+Ensure backend/.env has NODE_ENV=development, DB_HOST=127.0.0.1, DB_PORT=3307, and your actual database settings. From the project root run:
+
+```powershell
+npm run accounts:repair -- --local-demo
+npm run dev
+```
+
+The explicit repair command creates or updates only admin (ADMIN) and orderadmin (ORDER_ADMIN), using the documented local passwords admin123 and orderadmin123. It hashes passwords with bcrypt and updates both accounts in one transaction. It does not alter products, customers, orders, MySQL users or database passwords. It refuses production mode and non-loopback database hosts. Do not use demo credentials for a public deployment.
+
+Customer sign-in uses the customer Phone Number field, not the WhatsApp Number field. Customers must have a registered account with a password; adding a contact in the administration screen does not by itself register a customer login.

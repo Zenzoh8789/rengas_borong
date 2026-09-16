@@ -1,6 +1,6 @@
 import { FileText,ShieldCheck } from "lucide-react";
 import { FormEvent,useState } from "react";
-import { request } from "../api/client";
+import { ApiError, request } from "../api/client";
 import type { Role } from "../types";
 import { Logo } from "./Logo";
 
@@ -44,8 +44,16 @@ export function Login({ onLogin }: { onLogin: (role: Role) => void }) {
       });
 
       onLogin(data.user.role);
-    } catch {
-      setError("Invalid username, password, or login type.");
+    } catch (error) {
+      setError(error instanceof ApiError
+        ? error.status === 401
+          ? "Invalid username, password, or login type."
+          : error.status === 400
+            ? "Check your username, password, and login type."
+            : error.status === 429
+              ? "Too many sign-in attempts. Please try again later."
+              : "Sign-in is temporarily unavailable. Please try again shortly."
+        : "Cannot reach the server. Check your connection and try again.");
     } finally {
       setIsLoading(false);
     }

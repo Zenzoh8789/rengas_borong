@@ -1,6 +1,7 @@
 import { RefreshCw,Save,Upload } from "lucide-react";
 import { useEffect,useState } from "react";
 import { API,request } from "../api/client";
+import { designImages, type DesignImages } from "../api/design-settings";
 import type { ToastState } from "../types";
 import { Modal } from "./Modal";
 
@@ -11,19 +12,24 @@ export function Design({
   close: () => void;
   setToast: (t: ToastState) => void;
 }) {
-  const [design, setDesign] = useState<any>({
+  const [design, setDesign] = useState<DesignImages>({
     topBannerUrl: "",
     productPhotoUrl: "",
   });
   const [uploadingKey, setUploadingKey] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   useEffect(() => {
+    let active = true;
     request("/design-settings")
-      .then(setDesign)
-      .catch(() => {});
+      .then((value) => { if (active) setDesign(designImages(value)); })
+      .catch(() => { if (active) setLoadError("Could not load design. Close and reopen to retry."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
-  async function upload(key: string, file?: File) {
-    if (!file) return;
+  async function upload(key: keyof DesignImages, file?: File) {
+    if (!file || loading || loadError || saving || uploadingKey) return;
     const data = new FormData();
     data.append("image", file);
     setUploadingKey(key);
@@ -35,7 +41,7 @@ export function Design({
       });
       if (!response.ok) throw new Error();
       const result = await response.json();
-      setDesign((v: any) => ({ ...v, [key]: result.imageUrl }));
+      setDesign((v) => ({ ...v, [key]: result.imageUrl }));
       setToast({ type: "success", message: "Design image uploaded" });
     } catch {
       setToast({ type: "error", message: "Design image upload failed" });
@@ -44,11 +50,12 @@ export function Design({
     }
   }
   async function saveDesign() {
+    if (loading || loadError || saving || uploadingKey) return;
     setSaving(true);
     try {
       await request("/design-settings", {
         method: "PATCH",
-        body: JSON.stringify(design),
+        body: JSON.stringify(designImages(design)),
       });
       setToast({ type: "success", message: "Design saved successfully" });
       close();
@@ -58,7 +65,7 @@ export function Design({
       setSaving(false);
     }
   }
-  const fields = [
+  const fields: [keyof DesignImages, string, string][] = [
     [
       "topBannerUrl",
       "Top Background / Banner Image",
@@ -73,13 +80,17 @@ export function Design({
   return (
     <Modal
       title="Design CMS"
-      subtitle="PDF front page images. End page uses the top banner automatically."
       onClose={close}
     >
       <div className="modal-body design-body">
         <div className="design-title">
-          <h3>Front Page Design</h3>
+        <div>
+           <h3>Front Page Design</h3>
+           <p>Changes take effect when you click Save Design.</p>
+        </div>
           <button
+            type="button"
+            disabled={loading || Boolean(loadError) || saving || Boolean(uploadingKey)}
             onClick={() =>
               setDesign({
                 ...design,
@@ -91,6 +102,8 @@ export function Design({
             Remove Front Images
           </button>
         </div>
+        {loading && <p role="status">Loading saved design...</p>}
+        {loadError && <p role="alert">{loadError}</p>}
         {fields.map(([key, label, size]) => (
           <section className="design-upload" key={key}>
             <div className="design-upload-info">
@@ -116,7 +129,7 @@ export function Design({
                   hidden
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
-                  disabled={Boolean(uploadingKey)}
+                  disabled={loading || Boolean(loadError) || saving || Boolean(uploadingKey)}
                   onChange={(e) => {
                     upload(key, e.target.files?.[0]);
                     e.currentTarget.value = "";
@@ -127,8 +140,9 @@ export function Design({
                 <button
                   type="button"
                   className="design-remove"
+                  disabled={loading || Boolean(loadError) || saving || Boolean(uploadingKey)}
                   onClick={() =>
-                    setDesign((current: any) => ({
+                    setDesign((current) => ({
                       ...current,
                       [key]: "",
                     }))
@@ -145,7 +159,7 @@ export function Design({
         <button onClick={close}>Cancel</button>
         <button
           className="primary design-save"
-          disabled={saving || Boolean(uploadingKey)}
+          disabled={loading || Boolean(loadError) || saving || Boolean(uploadingKey)}
           onClick={saveDesign}
         >
           {saving ? <RefreshCw className="spin" /> : <Save />}
@@ -155,3 +169,5 @@ export function Design({
     </Modal>
   );
 }
+
+

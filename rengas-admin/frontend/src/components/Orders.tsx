@@ -506,7 +506,7 @@ export function Orders({
                   <span className="address-text">
                     {formatAddress(c.address)}
                   </span>
-                  <span>{c.tinNumber || "—"}</span>
+                  <span className="tin-number">{c.tinNumber || "—"}</span>
                   <span>{c.phoneNumber || "—"}</span>
                   <span>{c.whatsappNumber || "—"}</span>
                   <div className="row-actions">

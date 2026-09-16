@@ -18,6 +18,7 @@ export function EditProduct({
   const fileRef = useRef<HTMLInputElement>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState(product.imageUrl || "");
   const [form, setForm] = useState({
     code: product.code || "",
@@ -40,12 +41,13 @@ export function EditProduct({
   }, [setToast]);
 
   async function chooseImage(file?: File) {
-    if (!file) return;
+    if (!file || uploading || saving) return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
       setToast({ type: "error", message: "Use a JPG, PNG or WEBP image" });
       return;
     }
 
+    setUploading(true);
     const temporaryPreview = URL.createObjectURL(file);
     setPreview(temporaryPreview);
     const data = new FormData();
@@ -60,15 +62,20 @@ export function EditProduct({
       if (!response.ok) throw new Error();
       const result = await response.json();
       setForm((current) => ({ ...current, imageUrl: result.imageUrl }));
+      setPreview(result.imageUrl);
       setToast({ type: "success", message: "Product image uploaded" });
     } catch {
-      setPreview(product.imageUrl || "");
+      setPreview(form.imageUrl || "");
       setToast({ type: "error", message: "Image upload failed" });
+    } finally {
+      URL.revokeObjectURL(temporaryPreview);
+      setUploading(false);
     }
   }
 
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (uploading || saving) return;
     if (!form.categoryId) {
       setToast({ type: "error", message: "Please select a category" });
       return;
@@ -130,6 +137,7 @@ export function EditProduct({
             <input
               ref={fileRef}
               hidden
+              disabled={uploading || saving}
               type="file"
               accept="image/png,image/jpeg,image/webp"
               onChange={(e) => chooseImage(e.target.files?.[0])}
@@ -137,10 +145,11 @@ export function EditProduct({
             <button
               type="button"
               className="primary upload-edit-image"
+              disabled={uploading || saving}
               onClick={() => fileRef.current?.click()}
             >
               <Upload />
-              Upload Image
+              {uploading ? "Uploading..." : "Upload Image"}
             </button>
           </section>
 
@@ -219,7 +228,7 @@ export function EditProduct({
           <button type="button" onClick={close}>
             Cancel
           </button>
-          <button type="submit" className="primary" disabled={saving}>
+          <button type="submit" className="primary" disabled={saving || uploading}>
             <Save />
             {saving ? "Saving..." : "Save Changes"}
           </button>
@@ -228,4 +237,5 @@ export function EditProduct({
     </Modal>
   );
 }
+
 

@@ -2781,6 +2781,15 @@ aside {
   color: #69778e;
   overflow-wrap: anywhere;
 }
+
+.tin-number {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .status {
   width: fit-content;
   padding: 10px 14px;
