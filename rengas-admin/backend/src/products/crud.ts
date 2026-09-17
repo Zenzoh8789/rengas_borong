@@ -6,7 +6,6 @@ import {
   Get,
   Header,
   Injectable,
-  Logger,
   Param,
   ParseIntPipe,
   Patch,
@@ -36,7 +35,6 @@ import {
   Role,
   User,
 } from "../entities";
-import { FeaturesService } from "../features/features";
 import { getUploadDirectory } from "../storage";
 import { AdminAuthGuard } from "../auth/admin-auth.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -69,7 +67,6 @@ export class CrudService {
     @InjectRepository(OrderItem) private orderItems: Repository<OrderItem>,
     @InjectRepository(Notification)
     private notifications: Repository<Notification>,
-    private features: FeaturesService,
   ) {}
   categoriesAll() {
     return this.categories.find({
@@ -355,7 +352,6 @@ export class CrudService {
       id: Number(body.categoryId),
     });
 
-    const previousImageUrl = product.imageUrl;
     product.code = String(body.code).trim();
     product.description = String(body.description).trim();
     product.category = category;
@@ -364,14 +360,6 @@ export class CrudService {
     product.imageUrl = body.imageUrl || null;
 
     const saved = await this.products.save(product);
-
-    if (previousImageUrl && previousImageUrl !== saved.imageUrl) {
-      try {
-        await this.features.removeUnusedDesignFile(previousImageUrl, false, true);
-      } catch (error) {
-        Logger.warn(`Product saved, but old image cleanup failed: ${String(error)}`, "CrudService");
-      }
-    }
 
     await this.notify(
       "Product updated",

@@ -115,6 +115,21 @@ export class Customer {
   @Column({ name: "otp_attempts", type: "tinyint", unsigned: true, default: 0 })
   otpAttempts: number;
 
+  @Column({ name: "reset_otp_hash", type: "varchar", length: 255, nullable: true, select: false })
+  resetOtpHash?: string | null;
+
+  @Column({ name: "reset_otp_expires_at", type: "datetime", nullable: true })
+  resetOtpExpiresAt?: Date | null;
+
+  @Column({ name: "reset_otp_attempts", type: "tinyint", unsigned: true, default: 0 })
+  resetOtpAttempts: number;
+
+  @Column({ name: "reset_token_hash", type: "varchar", length: 64, nullable: true, select: false })
+  resetTokenHash?: string | null;
+
+  @Column({ name: "reset_token_expires_at", type: "datetime", nullable: true })
+  resetTokenExpiresAt?: Date | null;
+
   @CreateDateColumn({ name: "created_at" })
   createdAt: Date;
 

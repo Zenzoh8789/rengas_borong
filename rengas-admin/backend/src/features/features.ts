@@ -5,7 +5,6 @@ import {
   Get,
   Req,
   Injectable,
-  Logger,
   Param,
   ParseIntPipe,
   Patch,
@@ -31,7 +30,6 @@ import {
 } from "../uploads/upload-validation";
 import { readSpreadsheetRows } from "../uploads/spreadsheet";
 import { UpdateDesignDto } from "./design.dto";
-import { deleteUploadedDesignFile, imagePath, uploadedDesignFile } from "./design-files";
 
 @Injectable()
 export class FeaturesService {
@@ -178,21 +176,7 @@ export class FeaturesService {
   }
 
   async saveDesign(body: UpdateDesignDto) {
-    const previous = await this.getDesign();
     await this.designs.upsert({ id: 1, ...body }, ["id"]);
-    const fields = ["topBannerUrl", "productPhotoUrl", "footerImageUrl"] as const;
-    const removed = fields
-      .filter(key => Object.prototype.hasOwnProperty.call(body, key) && previous[key] !== body[key])
-      .map(key => previous[key])
-      .filter((url): url is string => Boolean(url));
-    for (const url of new Set(removed)) {
-      try {
-        await this.removeUnusedDesignFile(url);
-      } catch (error) {
-        // A cleanup failure must not turn a committed design save into a failed save.
-        Logger.warn(`Design saved, but old image cleanup failed: ${String(error)}`, "FeaturesService");
-      }
-    }
     await this.notifications.save(
       this.notifications.create({
         title: "Design updated",
@@ -201,22 +185,6 @@ export class FeaturesService {
       }),
     );
     return this.getDesign();
-  }
-
-  async removeUnusedDesignFile(url: string, dryRun = false, includeProducts = false): Promise<boolean> {
-    if (!uploadedDesignFile(url, includeProducts)) return false;
-    const products = await this.products.find({ select: { imageUrl: true } });
-    const designs = await this.designs.find({
-      select: { topBannerUrl: true, productPhotoUrl: true, footerImageUrl: true },
-    });
-    const references = [
-      ...products.map(product => product.imageUrl),
-      ...designs.flatMap(design => [design.topBannerUrl, design.productPhotoUrl, design.footerImageUrl]),
-    ];
-    // Case-insensitive comparison conservatively preserves aliases on Windows.
-    if (references.some(reference => imagePath(reference).toLowerCase() === url.toLowerCase())) return false;
-    if (!dryRun) await deleteUploadedDesignFile(url, includeProducts);
-    return true;
   }
 
   private normalizeHeader(value: unknown) {
@@ -295,5 +263,3 @@ export class FeaturesController {
     return this.service.saveDesign(body);
   }
 }
-
-

@@ -29,8 +29,9 @@ import {
 } from "class-validator";
 import { Request, Response } from "express";
 import * as bcrypt from "bcrypt";
-import { randomInt } from "node:crypto";
-import { Repository } from "typeorm";
+import { createHash, randomBytes, randomInt } from "node:crypto";
+import { MoreThan, Repository } from "typeorm";
+import { deliverResetOtp, resetSmsMode } from "./reset-sms";
 import { Customer, Role, User } from "../entities";
 import { CustomerAuthGuard } from "./customer-auth.guard";
 import type { CustomerRequest } from "./customer-auth.guard";
@@ -104,6 +105,26 @@ class VerifyCustomerOtpDto extends SendCustomerOtpDto {
   @Length(6, 6)
   @Matches(/^\d{6}$/)
   otp: string;
+}
+
+class ResetCustomerOtpDto extends SendCustomerOtpDto {
+  @IsString()
+  @Length(6, 6)
+  @Matches(/^\d{6}$/)
+  otp: string;
+}
+
+class ResetCustomerPasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(32)
+  @MaxLength(128)
+  resetToken: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(72)
+  newPassword: string;
 }
 
 class UpdateCustomerProfileDto {
@@ -203,6 +224,11 @@ export class AuthService {
       otpHash: null,
       otpExpiresAt: null,
       otpAttempts: 0,
+      resetOtpHash: null,
+      resetOtpExpiresAt: null,
+      resetOtpAttempts: 0,
+      resetTokenHash: null,
+      resetTokenExpiresAt: null,
     });
 
     const savedCustomer = await this.customers.save(customer);
@@ -305,6 +331,140 @@ export class AuthService {
     return { customer: customerResponse(savedCustomer) };
   }
 
+  async requestCustomerPasswordReset(rawPhoneNumber: string) {
+    resetSmsMode();
+    const phoneNumber = normalizePhone(rawPhoneNumber);
+    const customer = await this.customers
+      .createQueryBuilder("customer")
+      .addSelect("customer.passwordHash")
+      .where("customer.phoneNumber = :phoneNumber", { phoneNumber })
+      .getOne();
+
+    // Keep the public response generic so the endpoint does not reveal whether
+    // a phone number is registered. In development, return the OTP to make the
+    // local flow testable; production must be wired to an SMS provider.
+    if (!customer || !customer.passwordHash) {
+      return { message: "If an account exists, a password reset OTP has been sent." };
+    }
+
+    const otp = String(randomInt(100000, 1000000));
+    customer.resetOtpHash = await bcrypt.hash(otp, 10);
+    customer.resetOtpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    customer.resetOtpAttempts = 0;
+    customer.resetTokenHash = null;
+    customer.resetTokenExpiresAt = null;
+    await this.customers.save(customer);
+
+    try {
+      const delivery = await deliverResetOtp(phoneNumber, otp);
+      return {
+        message: delivery.developmentOtp
+          ? "Reset code created for local testing."
+          : "If an account exists, a password reset OTP has been sent.",
+        ...delivery,
+      };
+    } catch (error) {
+      await this.clearCustomerPasswordReset(customer);
+      throw error;
+    }
+  }
+
+  async verifyCustomerPasswordResetOtp(rawPhoneNumber: string, otp: string) {
+    const phoneNumber = normalizePhone(rawPhoneNumber);
+    const customer = await this.customers
+      .createQueryBuilder("customer")
+      .addSelect("customer.resetOtpHash")
+      .where("customer.phoneNumber = :phoneNumber", { phoneNumber })
+      .getOne();
+
+    if (!customer?.resetOtpHash || !customer.resetOtpExpiresAt) {
+      throw new UnauthorizedException("Request a new password reset OTP.");
+    }
+
+    if (customer.resetOtpExpiresAt.getTime() < Date.now()) {
+      await this.clearCustomerPasswordReset(customer);
+      throw new UnauthorizedException("Password reset OTP has expired. Request a new OTP.");
+    }
+
+    if (customer.resetOtpAttempts >= 5) {
+      await this.clearCustomerPasswordReset(customer);
+      throw new UnauthorizedException("Too many attempts. Request a new OTP.");
+    }
+
+    const valid = await bcrypt.compare(otp, customer.resetOtpHash);
+    if (!valid) {
+      customer.resetOtpAttempts += 1;
+      await this.customers.save(customer);
+      throw new UnauthorizedException("OTP is incorrect.");
+    }
+
+    const resetToken = randomBytes(32).toString("hex");
+    customer.resetTokenHash = createHash("sha256").update(resetToken).digest("hex");
+    customer.resetTokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await this.clearCustomerResetOtp(customer);
+
+    return {
+      message: "OTP verified. You may now set a new password.",
+      resetToken,
+      expiresInSeconds: 10 * 60,
+    };
+  }
+
+  async resetCustomerPassword(resetToken: string, newPassword: string) {
+    const tokenHash = createHash("sha256").update(resetToken).digest("hex");
+    const customer = await this.customers
+      .createQueryBuilder("customer")
+      .addSelect("customer.passwordHash")
+      .addSelect("customer.resetTokenHash")
+      .where("customer.resetTokenHash = :tokenHash", { tokenHash })
+      .getOne();
+
+    if (!customer?.resetTokenHash || !customer.resetTokenExpiresAt) {
+      throw new UnauthorizedException("Password reset token is invalid or expired.");
+    }
+
+    if (customer.resetTokenExpiresAt.getTime() < Date.now()) {
+      await this.clearCustomerPasswordReset(customer);
+      throw new UnauthorizedException("Password reset token is invalid or expired.");
+    }
+
+    if (newPassword.length < 8 || Buffer.byteLength(newPassword, "utf8") > 72) {
+      throw new BadRequestException("Password must be at least 8 characters and no more than 72 UTF-8 bytes.");
+    }
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    // Consume the token in the same database update as the password change.
+    const result = await this.customers.update(
+      { id: customer.id, resetTokenHash: tokenHash, resetTokenExpiresAt: MoreThan(new Date()) },
+      {
+        passwordHash,
+        resetOtpHash: null, resetOtpExpiresAt: null, resetOtpAttempts: 0,
+        resetTokenHash: null, resetTokenExpiresAt: null,
+        otpHash: null, otpExpiresAt: null, otpAttempts: 0,
+      },
+    );
+    if (result.affected !== 1) {
+      throw new UnauthorizedException("Password reset token is invalid or expired. Request a new OTP.");
+    }
+
+    return { message: "Password has been reset successfully." };
+  }
+
+  private async clearCustomerResetOtp(customer: Customer) {
+    customer.resetOtpHash = null;
+    customer.resetOtpExpiresAt = null;
+    customer.resetOtpAttempts = 0;
+    await this.customers.save(customer);
+  }
+
+  private async clearCustomerPasswordReset(customer: Customer) {
+    customer.resetOtpHash = null;
+    customer.resetOtpExpiresAt = null;
+    customer.resetOtpAttempts = 0;
+    customer.resetTokenHash = null;
+    customer.resetTokenExpiresAt = null;
+    await this.customers.save(customer);
+  }
+
   async verifyCustomerOtp(rawPhoneNumber: string, otp: string) {
     const phoneNumber = normalizePhone(rawPhoneNumber);
     const customer = await this.customers
@@ -405,6 +565,21 @@ export class AuthController {
     );
     this.setAccessCookie(response, result.accessToken);
     return result;
+  }
+
+  @Post("customer/forgot-password")
+  requestCustomerPasswordReset(@Body() dto: SendCustomerOtpDto) {
+    return this.auth.requestCustomerPasswordReset(dto.phoneNumber);
+  }
+
+  @Post("customer/verify-reset-otp")
+  verifyCustomerPasswordResetOtp(@Body() dto: ResetCustomerOtpDto) {
+    return this.auth.verifyCustomerPasswordResetOtp(dto.phoneNumber, dto.otp);
+  }
+
+  @Post("customer/reset-password")
+  resetCustomerPassword(@Body() dto: ResetCustomerPasswordDto) {
+    return this.auth.resetCustomerPassword(dto.resetToken, dto.newPassword);
   }
 
   @Post("customer/verify-otp")
