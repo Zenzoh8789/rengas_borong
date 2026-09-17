@@ -30,11 +30,12 @@ function fixture() {
 }
 
 test("password reset lifecycle and SMS failure paths", async (t) => {
-  const names = ["NODE_ENV", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "TWILIO_MESSAGING_SERVICE_SID"];
+  const names = ["PASSWORD_RESET_DELIVERY", "NODE_ENV", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "TWILIO_MESSAGING_SERVICE_SID"];
   const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
   const oldFetch = global.fetch;
   for (const name of names) delete process.env[name];
   process.env.NODE_ENV = "development";
+  process.env.PASSWORD_RESET_DELIVERY = "sms";
   try {
     await t.test("verified reset changes login password and rejects reused token and OTP", async () => {
       const { row, auth } = fixture();

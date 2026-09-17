@@ -31,7 +31,7 @@ import { Request, Response } from "express";
 import * as bcrypt from "bcrypt";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { MoreThan, Repository } from "typeorm";
-import { deliverResetOtp, resetSmsMode } from "./reset-sms";
+import { deliverPasswordReset, resetDeliveryMode } from "./reset-delivery";
 import { Customer, Role, User } from "../entities";
 import { CustomerAuthGuard } from "./customer-auth.guard";
 import type { CustomerRequest } from "./customer-auth.guard";
@@ -332,7 +332,7 @@ export class AuthService {
   }
 
   async requestCustomerPasswordReset(rawPhoneNumber: string) {
-    resetSmsMode();
+    const mode = resetDeliveryMode(rawPhoneNumber);
     const phoneNumber = normalizePhone(rawPhoneNumber);
     const customer = await this.customers
       .createQueryBuilder("customer")
@@ -342,9 +342,10 @@ export class AuthService {
 
     // Keep the public response generic so the endpoint does not reveal whether
     // a phone number is registered. In development, return the OTP to make the
-    // local flow testable; production must be wired to an SMS provider.
-    if (!customer || !customer.passwordHash) {
-      return { message: "If an account exists, a password reset OTP has been sent." };
+    // local flow testable; production sends to the registered contact only.
+    const message = mode === "email" ? "If the account has a registered email, a reset code has been sent. Check your inbox and spam folder." : "If an account exists, a password reset code has been sent.";
+    if (!customer || !customer.passwordHash || (mode === "email" && !customer.email)) {
+      return { message, delivery: mode };
     }
 
     const otp = String(randomInt(100000, 1000000));
@@ -356,11 +357,11 @@ export class AuthService {
     await this.customers.save(customer);
 
     try {
-      const delivery = await deliverResetOtp(phoneNumber, otp);
+      const delivery = await deliverPasswordReset(mode, phoneNumber, customer.email, otp);
       return {
         message: delivery.developmentOtp
-          ? "Reset code created for local testing."
-          : "If an account exists, a password reset OTP has been sent.",
+          ? "Reset code created for testing. No message was sent."
+          : message,
         ...delivery,
       };
     } catch (error) {

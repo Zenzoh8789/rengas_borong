@@ -85,3 +85,12 @@ test("failed OTP delivery keeps the phone form available", async () => {
   await h.submit();
   assert.ok(h.render().some(n => n.type === "h1" && n.props.children === "Forgot Password"));
 });
+
+test("email recovery asks for the emailed code without displaying an OTP", async () => {
+  const h = setup({ requestPasswordReset: async () => ({delivery:"email"}) });
+  h.click("auth-forgot-link");
+  h.change("Enter your phone number","60123456789");
+  await h.submit();
+  assert.ok(h.render().some(n => n.type === "p" && [n.props.children].flat(Infinity).some(text => typeof text === "string" && text.includes("registered email"))));
+  assert.ok(!h.render().some(n => n.type === "strong" && n.props.children === "123456"));
+});
