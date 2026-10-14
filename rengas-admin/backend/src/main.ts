@@ -47,7 +47,7 @@ async function bootstrap() {
       "http://localhost:5175",
       "https://72.61.113.192",
       "https://rengasborong.my",
-      "https://www.rengasborong.my",
+      "https://order.rengasborong.my",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
