@@ -102,8 +102,8 @@ export class CrudService {
       );
     return result;
   }
-  productsAll(search = "") {
-    return this.products.find({
+  async productsAll(search = "") {
+    const products = await this.products.find({
       where: search
         ? [
             { code: ILike(`%${search}%`) },
@@ -112,6 +112,12 @@ export class CrudService {
         : {},
       order: { createdAt: "DESC" },
     });
+    const references = await this.orderItems.createQueryBuilder("item")
+      .select("item.product_id", "productId")
+      .distinct(true)
+      .getRawMany<{ productId: number | string }>();
+    const orderedIds = new Set(references.map(row => Number(row.productId)));
+    return products.map(product => ({ ...product, canDelete: !orderedIds.has(product.id) }));
   }
   async addProduct(body: ProductDto): Promise<Product> {
   const category = await this.categories.findOneByOrFail({
@@ -369,6 +375,10 @@ export class CrudService {
     return saved;
   }
   async deleteProduct(id: number) {
+    const referenced = await this.orderItems.count({ where: { product: { id } } });
+    if (referenced) {
+      throw new BadRequestException("This product is used in order history and cannot be deleted. Turn catalogue status OFF to hide it from customers.");
+    }
     const product = await this.products.findOneBy({ id });
     const result = await this.products.delete(id);
     if (product)

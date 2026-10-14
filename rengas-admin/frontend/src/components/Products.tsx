@@ -185,10 +185,10 @@ export function Products({
       });
 
       setRefresh((value: number) => value + 1);
-    } catch {
+    } catch (error) {
       setToast({
         type: "error",
-        message: "Product could not be deleted",
+        message: error instanceof Error ? error.message : "Product could not be deleted",
       });
     }
   }
@@ -360,7 +360,7 @@ export function Products({
                     <Pencil />
                   </button>
 
-                  <button
+                  {product.canDelete === true && <button
                     type="button"
                     className="delete"
                     title="Delete"
@@ -370,7 +370,7 @@ export function Products({
                     onClick={() => remove(product.id)}
                   >
                     <Trash2 />
-                  </button>
+                  </button>}
 
                   <button
                     type="button"
@@ -492,3 +492,4 @@ export function Products({
     </section>
   );
 }
+

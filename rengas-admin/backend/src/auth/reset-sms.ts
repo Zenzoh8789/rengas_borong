@@ -8,7 +8,7 @@ export function resetSmsMode() {
   throw new ServiceUnavailableException("Password reset SMS is currently unavailable. Please contact the store.");
 }
 
-export async function deliverResetOtp(phoneNumber: string, otp: string) {
+export async function deliverResetOtp(phoneNumber: string, otp: string, purpose: "password reset" | "registration" = "password reset") {
   if (resetSmsMode() === "development") return { developmentOtp: otp };
   let digits = phoneNumber.replace(/\D/g, "");
   // National numbers need an explicitly configured country calling code.
@@ -22,7 +22,7 @@ export async function deliverResetOtp(phoneNumber: string, otp: string) {
   const account = process.env.TWILIO_ACCOUNT_SID!;
   const body = new URLSearchParams({
     To: "+" + digits,
-    Body: "RENGAS BORONG password reset code: " + otp + ". Expires in 5 minutes. Do not share this code.",
+    Body: "RENGAS BORONG " + purpose + " code: " + otp + ". Expires in 5 minutes. Do not share this code.",
   });
   if (process.env.TWILIO_MESSAGING_SERVICE_SID) body.set("MessagingServiceSid", process.env.TWILIO_MESSAGING_SERVICE_SID);
   else body.set("From", process.env.TWILIO_FROM_NUMBER!);

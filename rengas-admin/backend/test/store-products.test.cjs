@@ -53,15 +53,22 @@ test('category counts retain all 2551 rows, including repeated names and packs',
   assert.deepEqual(names.map(name => cards.filter(p => p.category.name === name).length), totals);
 });
 
-test('preserves category, per-SKU images, zero price and PDF-only inclusion behavior', async () => {
+test('hides OFF products while preserving active SKU details and zero prices', async () => {
   const rows = [
     product(1, '0013', 'SAME NAME 1KG', 0, { catalogueEnabled: false, imageUrl: '/uploads/one.png' }),
     product(2, '0014', 'SAME NAME 2KG', 10, { imageUrl: null }),
+    product(3, '0015', 'SAME NAME 3KG', 0, { catalogueEnabled: true, imageUrl: '/uploads/three.png' }),
   ];
   const cards = await serviceFor(rows).listProducts();
   assert.equal(cards.length, 2);
-  assert.deepEqual(cards.map(p => p.imageUrl), ['/uploads/one.png', null]);
-  assert.equal(cards[0].uoms[0].price, 0);
+  assert.deepEqual(cards.map(p => p.id), [2, 3]);
+  assert.deepEqual(cards.map(p => p.imageUrl), [null, '/uploads/three.png']);
+  assert.equal(cards[1].uoms[0].price, 0);
   assert.equal(cards[0].category.name, 'BARBER PRODUCTS');
   assert.deepEqual(await serviceFor([]).listProducts(), []);
+});
+
+test('cannot submit an OFF product left in an old cart', async () => {
+  const service = new StoreService({ findByIds: async () => [product(1, 'OFF', 'Hidden', 10, { catalogueEnabled: false })] }, {}, {}, {}, {});
+  await assert.rejects(service.createOrder(1, { items: [{ productId: 1, quantity: 1 }] }), /no longer available/);
 });

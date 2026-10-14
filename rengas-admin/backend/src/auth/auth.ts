@@ -20,6 +20,7 @@ import {
   IsEmail,
   IsEnum,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Length,
   Matches,
@@ -35,6 +36,7 @@ import { deliverPasswordReset, resetDeliveryMode } from "./reset-delivery";
 import { Customer, Role, User } from "../entities";
 import { CustomerAuthGuard } from "./customer-auth.guard";
 import type { CustomerRequest } from "./customer-auth.guard";
+import { RegistrationVerification } from "./registration-verification";
 
 class LoginDto {
   @IsString()
@@ -49,6 +51,10 @@ class LoginDto {
 }
 
 class CustomerSignupDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  verificationToken?: string;
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
@@ -166,6 +172,19 @@ const customerResponse = (customer: Customer) => ({
 
 @Injectable()
 export class AuthService {
+  private readonly registration = new RegistrationVerification();
+
+  async sendRegistrationOtp(rawPhoneNumber: string) {
+    const phoneNumber = normalizePhone(rawPhoneNumber);
+    if (await this.customers.findOne({ where: { phoneNumber } })) {
+      throw new ConflictException("This phone number is already registered. Please sign in.");
+    }
+    return this.registration.send(phoneNumber);
+  }
+
+  verifyRegistrationOtp(rawPhoneNumber: string, otp: string) {
+    return this.registration.verify(normalizePhone(rawPhoneNumber), otp);
+  }
   constructor(
     @InjectRepository(User)
     private readonly users: Repository<User>,
@@ -211,6 +230,8 @@ export class AuthService {
       );
     }
 
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+    if (dto.verificationToken) this.registration.consume(phoneNumber, dto.verificationToken);
     const customer = this.customers.create({
       name: dto.fullName.trim(),
       companyName: dto.businessName.trim(),
@@ -219,8 +240,8 @@ export class AuthService {
       email,
       tinNumber,
       address: dto.address.trim(),
-      passwordHash: await bcrypt.hash(dto.password, 12),
-      phoneVerifiedAt: null,
+      passwordHash,
+      phoneVerifiedAt: dto.verificationToken ? new Date() : null,
       otpHash: null,
       otpExpiresAt: null,
       otpAttempts: 0,
@@ -553,6 +574,16 @@ export class AuthController {
   @Post("customer/send-otp")
   sendCustomerOtp(@Body() dto: SendCustomerOtpDto) {
     return this.auth.sendCustomerOtp(dto.phoneNumber);
+  }
+
+  @Post("customer/registration/send-otp")
+  sendRegistrationOtp(@Body() dto: SendCustomerOtpDto) {
+    return this.auth.sendRegistrationOtp(dto.phoneNumber);
+  }
+
+  @Post("customer/registration/verify-otp")
+  verifyRegistrationOtp(@Body() dto: VerifyCustomerOtpDto) {
+    return this.auth.verifyRegistrationOtp(dto.phoneNumber, dto.otp);
   }
 
   @Post("customer/login")

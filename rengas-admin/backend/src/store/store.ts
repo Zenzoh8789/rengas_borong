@@ -91,11 +91,12 @@ export class StoreService {
 
   async listProducts() {
     const rows = await this.products.find({
+      where: { catalogueEnabled: true },
       order: { description: "ASC", id: "ASC" },
     });
     // A database product is an orderable SKU. Never collapse pack sizes or
     // duplicate descriptions: cards, detail URLs and checkout all use its ID.
-    return rows.map((row) => ({
+    return rows.filter(row => row.catalogueEnabled !== false).map((row) => ({
       id: row.id,
       code: row.code,
       name: row.description,
@@ -129,6 +130,9 @@ export class StoreService {
 
     if (products.length !== new Set(ids).size) {
       throw new BadRequestException("One or more products no longer exist");
+    }
+    if (products.some(product => product.catalogueEnabled === false)) {
+      throw new BadRequestException("One or more products are no longer available. Remove them from your cart before ordering.");
     }
 
     const customer = await this.customers.findOneBy({ id: customerId });

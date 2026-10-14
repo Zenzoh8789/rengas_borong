@@ -15,6 +15,7 @@ export type Product = {
   category: Category;
   imageUrl?: string;
   catalogueEnabled: boolean;
+  canDelete?: boolean;
 };
 
 export type Customer = {

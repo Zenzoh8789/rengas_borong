@@ -1,0 +1,11 @@
+export declare const MAX_SPREADSHEET_BYTES: number;
+export declare const MAX_SPREADSHEET_ROWS = 10000;
+export declare const MAX_ZIP_BYTES: number;
+export declare const MAX_ZIP_ENTRIES = 500;
+export declare const MAX_ZIP_UNCOMPRESSED_BYTES: number;
+export declare const MAX_IMAGE_BYTES: number;
+export declare const MAX_IMAGE_PIXELS = 25000000;
+export declare function validateSpreadsheetUpload(file?: Express.Multer.File): asserts file is Express.Multer.File;
+export declare function validateZipUpload(file?: Express.Multer.File): void;
+export declare function validateImageBuffer(buffer: Buffer): Promise<void>;
+export declare function assertSpreadsheetRowLimit(rowCount: number): void;
